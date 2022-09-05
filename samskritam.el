@@ -42,7 +42,7 @@
 (defvar samskritam-mode)
 
 (defgroup samskritam nil
-  "Provide functions for word definitions and translations"
+  "Provide functions for word definitions and translations."
   :group 'convenience)
 
 
@@ -91,8 +91,7 @@ By default, `message' is used."
   '((vacaspatyam "https://ambuda.org/tools/dictionaries/vacaspatyam/%s" define-sanskrit-word--parse-vacaspatyam)
     (mw "https://ambuda.org/tools/dictionaries/mw/%s" define-sanskrit-word--parse-mw)
     )
-  "Services for define-sanskrit-word, A list of lists of the
-  format (symbol url function-for-parsing).
+  "Services for define-sanskrit-word, A list of lists of the format (symbol url function-for-parsing).
 Instead of an url string, url can be a custom function for retrieving results."
   :type '(alist
           :key-type (symbol :tag "Name of service")
@@ -101,8 +100,8 @@ Instead of an url string, url can be a custom function for retrieving results."
                        (function :tag "Parsing function"))))
 
 (defcustom define-sanskrit-word-default-service 'mw
-  "The default service for define-sanskrit-word commands. Must be one of
-  `define-sanskrit-word-services'"
+  "The default service for define-sanskrit-word commands.
+Must be one of `define-sanskrit-word-services'"
   :type '(choice
 	  (const mw)
           (const vacaspatyam)
@@ -140,10 +139,9 @@ Instead of an url string, url can be a custom function for retrieving results."
                   "\n")))))
 
 (defun define-sanskrit-word (word service &optional choose-service)
-  "Define WORD using various services.
-
+  "Define WORD by referencing various dictionary SERVICE.
 By default uses `define-sanskrit-word-default-service', but a prefix arg
-lets the user choose service."
+lets the user choose-service."
   (interactive "MWord: \ni\nP")
   (let* ((service (or service
                       (if choose-service
@@ -192,9 +190,10 @@ In a non-interactive call SERVICE can be passed."
 
 (defface define-sanskrit-word-face-2
   '((t :inherit default))
-  "Face for the body of the definition")
+  "Face for the body of the definition.")
 
 (defun define-sanskrit-word--join-results (results)
+  "Join RESULTS for display."
   (mapconcat
    #'identity
    (if (> (length results) define-sanskrit-word-limit)
@@ -203,6 +202,7 @@ In a non-interactive call SERVICE can be passed."
    "\n"))
 
 (defun define-sanskrit-word--regexp-to-face (regexp face)
+  "Map word to face type."
   (goto-char (point-min))
   (while (re-search-forward regexp nil t)
     (let ((match (match-string 1)))
@@ -231,7 +231,7 @@ In a non-interactive call SERVICE can be passed."
 
 
 (defun define-sanskrit-word--parse-mw ()
-  "Parse output from mw site and return formatted list"
+  "Parse output from mw site and return formatted list."
   (message "This message is from MW word parser!")
   (save-match-data
     (let (results beg part)
@@ -263,6 +263,7 @@ In a non-interactive call SERVICE can be passed."
 
 
 (defun toggle-alternative-input-method (method &optional arg interactive)
+  "Method to toggle input method."
   (if arg
       (toggle-input-method arg interactive)
     (let ((previous-input-method current-input-method))
@@ -273,6 +274,7 @@ In a non-interactive call SERVICE can be passed."
         (activate-input-method method)))))
 
 (defun reload-alternative-input-methods ()
+  "Load alternative input method."
   (dolist (config alternative-input-methods)
     (let ((method (car config)))
       (global-set-key (cdr config)
@@ -286,7 +288,7 @@ In a non-interactive call SERVICE can be passed."
 
 ;;;###autoload
 (define-minor-mode samskritam-mode
-  "Toggle Samskritam mode. "
+  "Toggle Samskritam mode."
   :global t
   :version "0.1.0"
   :lighter ""
