@@ -160,6 +160,7 @@ lets the user CHOOSE-SERVICE."
 
 (declare-function pdf-view-active-region-text "ext:pdf-view")
 
+;;;###autoload
 (defun samskritam-word-at-point (arg &optional service)
   "Use `samskritam-word' to define word at point.
 When the region is active, define the marked phrase.
@@ -278,7 +279,7 @@ In a non-interactive call SERVICE can be passed."
                          (samskritam-toggle-alternative-input-method ,method arg interactive))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
+;;;###autoload
 (define-minor-mode samskritam-mode
   "Toggle Samskritam mode."
   :global t
