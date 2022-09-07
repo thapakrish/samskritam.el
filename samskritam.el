@@ -1,4 +1,4 @@
-;;; samskritam.el --- define samskrit word, translate to and from samskrit. -*- lexical-binding: t -*-
+;;; samskritam.el --- Library to get samskrit word definition, translate to/from -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2022 Krishna Thapa
 
@@ -6,8 +6,8 @@
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "28.1"))
-;; Keywords: samskrit, sanskrit, dictionary, translation
+;; Package-Requires: ((emacs "28.1") (google-translate "0.12.0") (popup "0.5.8"))
+;; Keywords: language, samskrit, sanskrit, dictionary, translation
 
 ;; This file is not part of GNU Emacs
 
@@ -28,7 +28,8 @@
 ;;
 ;; This package uses:
 ;; Google Translate to translate to/from Sanskrit
-;; Sends request to https://ambuda.org/ for dictionary definition
+;; Sends request to https://ambuda.org/ for dictionary definition of words
+;; Add Vedic characters to devanagari-inscript
 ;;
 ;;; Code:
 
@@ -49,23 +50,18 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Translate ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun google-translate--search-tkk ()
-  "Search TKK."
-  (list 430675 2721866130))
-
 
 (defcustom samskritam-mode-line '(:eval (propertize " SKT" 'face 'mode-line-emphasis))
   "String to show in the mode-line of Samskritam.
 Setting this to nil removes from the mode-line."
   :group 'samskritam
-  :type '(choice (const :tag "Off" nil)
-		 ))
+  :type '(choice (const :tag "Off" nil)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Dictionary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defvar define-sanskrit-word-limit 20
+(defvar samskritam-word-limit 20
   "Maximum amount of results to display.")
 
 
@@ -75,23 +71,22 @@ Setting this to nil removes from the mode-line."
   :group 'samskritam)
 
 
-(defcustom define-sanskrit-word-displayfn-alist nil
+(defcustom samskritam-word-displayfn-alist nil
   "Alist for display functions per service.
 By default, `message' is used."
   :type '(alist
           :key-type (symbol :tag "Name of service")
           :value-type (function :tag "Display function")))
 
-(defun define-sanskrit-word-displayfn (service)
+(defun samskritam-word-displayfn (service)
   "Return the display function for SERVICE."
-  (or (cdr (assoc service define-sanskrit-word-displayfn-alist))
+  (or (cdr (assoc service samskritam-word-displayfn-alist))
       #'message))
 
-(defcustom define-sanskrit-word-services
-  '((vacaspatyam "https://ambuda.org/tools/dictionaries/vacaspatyam/%s" define-sanskrit-word--parse-vacaspatyam)
-    (mw "https://ambuda.org/tools/dictionaries/mw/%s" define-sanskrit-word--parse-mw)
-    )
-  "Services for define-sanskrit-word, A list of lists of the format (symbol url function-for-parsing).
+(defcustom samskritam-word-services
+  '((vacaspatyam "https://ambuda.org/tools/dictionaries/vacaspatyam/%s" samskritam-word--parse-vacaspatyam)
+    (mw "https://ambuda.org/tools/dictionaries/mw/%s" samskritam-word--parse-mw))
+  "Services for samskritam-word, A list of lists of the format (symbol url function-for-parsing).
 Instead of an url string, url can be a custom function for retrieving results."
   :type '(alist
           :key-type (symbol :tag "Name of service")
@@ -99,17 +94,17 @@ Instead of an url string, url can be a custom function for retrieving results."
                        (string :tag "Url (%s denotes search word)")
                        (function :tag "Parsing function"))))
 
-(defcustom define-sanskrit-word-default-service 'mw
-  "The default service for define-sanskrit-word commands.
-Must be one of `define-sanskrit-word-services'"
+(defcustom samskritam-word-default-service 'mw
+  "The default service for `samskritam-word` commands.
+Must be one of `samskritam-word-services'"
   :type '(choice
 	  (const mw)
           (const vacaspatyam)
           symbol))
 
-(defun define-sanskrit-word--to-string (word service)
+(defun samskritam-word--to-string (word service)
   "Get definition of WORD from SERVICE."
-  (let* ((servicedata (assoc service define-sanskrit-word-services))
+  (let* ((servicedata (assoc service samskritam-word-services))
          (retriever (nth 1 servicedata))
          (parser (nth 2 servicedata))
          (url-user-agent
@@ -126,7 +121,8 @@ Must be one of `define-sanskrit-word-services'"
 	  (message "Got from url %s" url)
           (funcall parser))))))
 
-(defun define-sanskrit-word--expand (regex definition service)
+(defun samskritam-word--expand (regex definition service)
+  "Expand word."
   (let ((case-fold-search nil))
     (when (string-match regex definition)
       (concat
@@ -134,38 +130,37 @@ Must be one of `define-sanskrit-word-services'"
        "\n" (match-string 1 definition) ":\n"
        (mapconcat (lambda (s) (concat "  " s))
                   (split-string
-                   (define-sanskrit-word--to-string (match-string 1 definition) service)
+                   (samskritam-word--to-string (match-string 1 definition) service)
                    "\n")
                   "\n")))))
 
-(defun define-sanskrit-word (word service &optional choose-service)
+(defun samskritam-word (word service &optional choose-service)
   "Define WORD by referencing various dictionary SERVICE.
-By default uses `define-sanskrit-word-default-service', but a prefix arg
-lets the user choose-service."
+By default uses `samskritam-word-default-service', but a prefix arg
+lets the user CHOOSE-SERVICE."
   (interactive "MWord: \ni\nP")
   (let* ((service (or service
                       (if choose-service
                           (intern
                            (completing-read
-                            "Service: " define-sanskrit-word-services))
-                        define-sanskrit-word-default-service)))
-         (results (define-sanskrit-word--to-string word service)))
+                            "Service: " samskritam-word-services))
+                        samskritam-word-default-service)))
+         (results (samskritam-word--to-string word service)))
 
     (funcall
-     (define-sanskrit-word-displayfn service)
+     (samskritam-word-displayfn service)
      (cond ((not results)
             "0 definitions found")
-           ((define-sanskrit-word--expand "Plural form of \\(.*\\)\\.$" results service))
-           ((define-sanskrit-word--expand "Past participle of \\(.*\\)\\.$" results service))
-           ((define-sanskrit-word--expand "Present participle of \\(.*\\)\\.$" results service))
+           ((samskritam-word--expand "Plural form of \\(.*\\)\\.$" results service))
+           ((samskritam-word--expand "Past participle of \\(.*\\)\\.$" results service))
+           ((samskritam-word--expand "Present participle of \\(.*\\)\\.$" results service))
            (t
-            results))))
-  )
+            results)))))
 
 (declare-function pdf-view-active-region-text "ext:pdf-view")
 
-(defun define-sanskrit-word-at-point (arg &optional service)
-  "Use `define-sanskrit-word' to define word at point.
+(defun samskritam-word-at-point (arg &optional service)
+  "Use `samskritam-word' to define word at point.
 When the region is active, define the marked phrase.
 Prefix ARG lets you choose service.
 
@@ -182,34 +177,34 @@ In a non-interactive call SERVICE can be passed."
           (t
            (substring-no-properties
             (thing-at-point 'word))))))
-    (define-sanskrit-word word service arg)))
+    (samskritam-word word service arg)))
 
-(defface define-sanskrit-word-face-1
+(defface samskritam-word-face-1
   '((t :inherit font-lock-keyword-face))
   "Face for the part of speech of the definition.")
 
-(defface define-sanskrit-word-face-2
+(defface samskritam-word-face-2
   '((t :inherit default))
   "Face for the body of the definition.")
 
-(defun define-sanskrit-word--join-results (results)
+(defun samskritam-word--join-results (results)
   "Join RESULTS for display."
   (mapconcat
    #'identity
-   (if (> (length results) define-sanskrit-word-limit)
-       (cl-subseq results 0 define-sanskrit-word-limit)
+   (if (> (length results) samskritam-word-limit)
+       (cl-subseq results 0 samskritam-word-limit)
      results)
    "\n"))
 
-(defun define-sanskrit-word--regexp-to-face (regexp face)
-  "Map word to face type."
+(defun samskritam-word--regexp-to-face (regexp face)
+  "Map word that mathces with REGEXP to FACE type."
   (goto-char (point-min))
   (while (re-search-forward regexp nil t)
     (let ((match (match-string 1)))
       (replace-match
        (propertize match 'face face)))))
 
-(defconst define-sanskrit-word--tag-faces
+(defconst samskritam-word--tag-faces
   '(("<\\(?:em\\|i\\)>\\(.*?\\)</\\(?:em\\|i\\)>" italic)
     ("<\\(?:b\\|i\\)>\\(.*?\\)</\\(?:b\\|i\\)>" bold)
     ("<cite>\\(.*?\\)</cite>" link)
@@ -217,20 +212,19 @@ In a non-interactive call SERVICE can be passed."
     ("<strong>\\(.*?\\)</strong>" match)
     ("<span lang=\"[^\"]*\">\\([^<]*\\)</span>" variable-pitch)
     ("<span class=\"[^\"]*\">\\([^<]*\\)</span>" error)
-    ("<span>\\(.*?\\)</span>" shadow)
-))
+    ("<span>\\(.*?\\)</span>" shadow)))
 
-(defun define-sanskrit-word--convert-html-tag-to-face (str)
+(defun samskritam-word--convert-html-tag-to-face (str)
   "Replace semantical HTML markup in STR with the relevant faces."
   (with-temp-buffer
     (insert str)
-    (cl-loop for (regexp face) in define-sanskrit-word--tag-faces do
-             (define-sanskrit-word--regexp-to-face regexp face))
+    (cl-loop for (regexp face) in samskritam-word--tag-faces do
+             (samskritam-word--regexp-to-face regexp face))
     (buffer-string)))
 
 
 
-(defun define-sanskrit-word--parse-mw ()
+(defun samskritam-word--parse-mw ()
   "Parse output from mw site and return formatted list."
   (message "This message is from MW word parser!")
   (save-match-data
@@ -243,27 +237,25 @@ In a non-interactive call SERVICE can be passed."
           (push (concat
 		 (propertize
                   (buffer-substring-no-properties beg (match-beginning 0))
-                  'face 'define-sanskrit-word-face-2))
+                  'face 'samskritam-word-face-2))
                 results)))
       (when (setq results (nreverse results))
-        (define-sanskrit-word--convert-html-tag-to-face (define-sanskrit-word--join-results results))))))
+        (samskritam-word--convert-html-tag-to-face (samskritam-word--join-results results))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Devanagari Script ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Input method and key binding configuration.
-(setq alternative-input-methods
-      '(("devanagari-inscript" . [?\C-\\])
-        ))
+(defvar samskritam-alternative-input-methods
+      '(("devanagari-inscript" . [?\C-\\])))
 
-(setq default-input-method
-      (caar alternative-input-methods))
-
+(defvar samskritam-default-input-method
+      (caar samskritam-alternative-input-methods))
 
 
-(defun toggle-alternative-input-method (method &optional arg interactive)
-  "Method to toggle input method."
+(defun samskritam-toggle-alternative-input-method (method &optional arg interactive)
+  "METHOD to toggle input method.  Takes in INTERACTIVE ARG."
   (if arg
       (toggle-input-method arg interactive)
     (let ((previous-input-method current-input-method))
@@ -273,16 +265,16 @@ In a non-interactive call SERVICE can be passed."
                    (string= previous-input-method method))
         (activate-input-method method)))))
 
-(defun reload-alternative-input-methods ()
+(defun samskritam-reload-alternative-input-methods ()
   "Load alternative input method."
-  (dolist (config alternative-input-methods)
+  (dolist (config samskritam-alternative-input-methods)
     (let ((method (car config)))
       (global-set-key (cdr config)
                       `(lambda (&optional arg interactive)
                          ,(concat "Behaves similar to `toggle-input-method', but uses \""
                                   method "\" instead of `default-input-method'")
                          (interactive "P\np")
-                         (toggle-alternative-input-method ,method arg interactive))))))
+                         (samskritam-toggle-alternative-input-method ,method arg interactive))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -297,22 +289,16 @@ In a non-interactive call SERVICE can be passed."
   (if samskritam-mode
       ;; Turning the mode ON
       (progn
-	(google-translate--search-tkk)
-	(reload-alternative-input-methods)
+	;;	(google-translate--search-tkk)
+	(samskritam-reload-alternative-input-methods)
 	(add-to-list 'google-translate-supported-languages-alist '("Sanskrit"  . "sa"))
-	(add-hook 'translate-mode-hook
-		  (lambda () (local-set-key (kbd "\C-ct") #'google-translate-smooth-translate)))
 	)
 
     ;; Turning the mode OFF
-    (remove-hook 'translate-mode-hook #'google-translate-smooth-translate)
-
 
     ;; TODO: Clean UP
     ;; ()
     ))
 
 (provide 'samskritam)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; samskritam.el ends here
-;; 
