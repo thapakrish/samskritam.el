@@ -6,7 +6,7 @@
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "28.1") (google-translate "0.12.0") (popup "0.5.8"))
+;; Package-Requires: ((emacs "28.1") (google-translate "20210406.1138") (popup "20211231.1823"))
 ;; Keywords: language, samskrit, sanskrit, dictionary, translation
 
 ;; This file is not part of GNU Emacs
