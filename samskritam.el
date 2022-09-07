@@ -134,6 +134,7 @@ Must be one of `samskritam-word-services'"
                    "\n")
                   "\n")))))
 
+;;;###autoload
 (defun samskritam-word (word service &optional choose-service)
   "Define WORD by referencing various dictionary SERVICE.
 By default uses `samskritam-word-default-service', but a prefix arg
@@ -278,7 +279,6 @@ In a non-interactive call SERVICE can be passed."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;###autoload
 (define-minor-mode samskritam-mode
   "Toggle Samskritam mode."
   :global t
