@@ -6,8 +6,8 @@
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "28.1") (google-translate "20210406.1138") (popup "20211231.1823"))
-;; Keywords: language, samskrit, sanskrit, dictionary, translation
+;; Package-Requires: ((emacs "28.1") (google-translate "0.12.0"))
+;; Keywords: convenience, language, samskrit, sanskrit, dictionary, translation
 
 ;; This file is not part of GNU Emacs
 
@@ -86,7 +86,8 @@ By default, `message' is used."
 (defcustom samskritam-word-services
   '((vacaspatyam "https://ambuda.org/tools/dictionaries/vacaspatyam/%s" samskritam-word--parse-vacaspatyam)
     (mw "https://ambuda.org/tools/dictionaries/mw/%s" samskritam-word--parse-mw))
-  "Services for samskritam-word, A list of lists of the format (symbol url function-for-parsing).
+  "Services for `samskritam-word`.
+A list of lists of the format (symbol url function-for-parsing).
 Instead of an url string, url can be a custom function for retrieving results."
   :type '(alist
           :key-type (symbol :tag "Name of service")
@@ -122,7 +123,7 @@ Must be one of `samskritam-word-services'"
           (funcall parser))))))
 
 (defun samskritam-word--expand (regex definition service)
-  "Expand word."
+  "Expand word given REGEX DEFINITION SERVICE."
   (let ((case-fold-search nil))
     (when (string-match regex definition)
       (concat
@@ -230,7 +231,7 @@ In a non-interactive call SERVICE can be passed."
   "Parse output from mw site and return formatted list."
   (message "This message is from MW word parser!")
   (save-match-data
-    (let (results beg part)
+    (let (results beg _part)
       ;;      (message "Output is: %s" results)
       (while (re-search-forward "<li class=\"dict-entry mw-entry\">" nil t)
         (skip-chars-forward " ")
@@ -292,8 +293,7 @@ In a non-interactive call SERVICE can be passed."
       (progn
 	;;	(google-translate--search-tkk)
 	(samskritam-reload-alternative-input-methods)
-	(add-to-list 'google-translate-supported-languages-alist '("Sanskrit"  . "sa"))
-	)
+	(add-to-list 'google-translate-supported-languages-alist '("Sanskrit"  . "sa")))
 
     ;; Turning the mode OFF
 
