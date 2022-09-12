@@ -1,4 +1,4 @@
-;;; samskritam.el --- Library to get samskrit word definition, translate to/from -*- lexical-binding: t -*-
+;;; samskritam.el --- Library to get samskrit word definition, translate to & from -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2022 Krishna Thapa
 
