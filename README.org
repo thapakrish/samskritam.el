@@ -1,0 +1,27 @@
+* Installation
+This package is available in MELPA as =smaskritam-mode=.
+
+: M-x package-install RET samskritam-mode RET
+
+* Manual installation
+
+#+begin_src emacs-lisp
+  (use-package samskritam
+    :ensure t
+    :bind (("\C-cd"   . samskritam-word-at-point)
+	   ("\C-cD"   . samskritam-word))
+    :init
+    (setq google-translate-backend-method 'curl)
+    (defun google-translate--search-tkk () "Search TKK." (list 430675 2721866130))
+    (global-set-key "\C-ct" 'google-translate-smooth-translate)
+    )
+  ;; Activate mode with M-x samskritam-mode
+  ;; Toggle ON/OFF Devanagari Inscript: C + \
+  ;; राम
+
+#+end_src
+
+* Inspiration
+- [[https://ambuda.org/][ambuda.org]]
+- [[https://github.com/abo-abo/define-word][define-word]]
+- [[https://github.com/atykhonov/google-translate][google-translate]]  
