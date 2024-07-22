@@ -41,7 +41,7 @@
 (require 'popper)
 
 (defvar samskritam-mode nil
-  "Toggle samskritam-mode.")
+  "Toggle `samskritam-mode'.")
 
 
 (defgroup samskritam nil
@@ -49,7 +49,7 @@
   :group 'convenience)
 
 (defcustom samskritam-keymap-prefix "C-c C-s"
-  "The prefix for samskritam-mode key bindings."
+  "The prefix for `samskritam-mode' key bindings."
   :type 'string
   :group 'samskritam)
 
@@ -58,14 +58,9 @@
   :type 'boolean
   :group 'samskritam)
 
-
-(defun samskritam--key (key)
-  (kbd (concat samskritam-keymap-prefix " " key)))
-
-
 (defcustom samskritam-mode-line '(:eval (propertize " SKT" 'face 'mode-line-emphasis))
-  "String to show in the mode-line of Samskritam. Setting this to
-nil removes from the mode-line."
+  "String to show in the mode-line of Samskritam.
+Setting this tonil removes from the mode-line."
   :group 'samskritam
   :type '(choice (const :tag "Off" nil)))
 
@@ -92,23 +87,22 @@ By default, `message' is used."
           :value-type (function :tag "Display function")))
 
 
-(defcustom message-buffer-display-dict 'apte
-  "Default dictionary to display in message buffer"
+(defcustom samskritam-message-buffer-display-dict 'apte
+  "Default dictionary to display in message buffer."
   :type 'string
   :group 'samskritam)
 
 
 
-(defvar ambuda-dict-choices '(
+(defvar samskritam-ambuda-dict-choices '(
 			      ("Apte" . "apte")
 			      ("Apte-Kosh" . "apte-sh")
 			      ("MW" . "mw")
 			      ("Shabdasagara" . "shabdasagara")
 			      ("Vacaspatyam" . "vacaspatyam")
 			      ("Shabdarthakausubha" . "shabdakalpadruma")
-			      ("Amarakosha" . "amara")
-			      )
-  "Dictionaries in Ambuda.org to crawl from")
+			      ("Amarakosha" . "amara"))
+  "Dictionaries in Ambuda.org to crawl from.")
 
 
 
@@ -119,8 +113,7 @@ By default uses `samskritam-word-default-dict', but a prefix arg
 lets the user CHOOSE-DICT."
   (interactive "MWord: \ni\nP")
   (let* ((previous-buffer (current-buffer))
-	 (dict-choices ambuda-dict-choices
-		       ))
+	 (dict-choices samskritam-ambuda-dict-choices))
     (dolist (dict-choice dict-choices)
       (setq buffer-name (concat "*" (car dict-choice) "*"))
       (setq dict (cdr dict-choice))
@@ -141,12 +134,10 @@ lets the user CHOOSE-DICT."
       (setq end (- (search-forward "ambuda" nil t) 7))
       (append-to-buffer buffer-name beg end)
 
-      (if (string= dict message-buffer-display-dict)
-	  (message "\n%s" (buffer-substring beg end))
-	)
+      (if (string= dict samskritam-message-buffer-display-dict)
+	  (message "\n%s" (buffer-substring beg end)))
 
-      (delete-window)
-      )))
+      (delete-window))))
 
 
 (declare-function pdf-view-active-region-text "ext:pdf-view")
@@ -176,18 +167,15 @@ In a non-interactive call DICT can be passed."
 
 
 ;;;###autoload
-(defun message-buffer-display-dict-select ()
+(defun samskritam-message-buffer-display-dict-select ()
   "Select ellama provider."
   (interactive)
-  (let* ((dict-choices ambuda-dict-choices
-		       )
+  (let* ((dict-choices samskritam-ambuda-dict-choices)
 	 (variants (mapcar #'car dict-choices)))
-    (setq message-buffer-display-dict
+    (setq samskritam-message-buffer-display-dict
 	  (eval (alist-get
 		 (completing-read "Select dictionary: " variants)
-		 dict-choices nil nil #'string=)))
-    )
-  )
+		 dict-choices nil nil #'string=)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -243,9 +231,9 @@ In a non-interactive call DICT can be passed."
 
 
   (add-hook 'samskritam-mode-on-hook (lambda () (message "Samskritam turned on!")))
-  (add-hook 'samskritam-mode-off-hook (lambda () (message "Samskritam turned off!")))
-  )
+  (add-hook 'samskritam-mode-off-hook (lambda () (message "Samskritam turned off!"))))
 
-(provide 'samskritam)
 ;;;; राम
-;;;; samskritam.el ends here
+(provide 'samskritam)
+
+;;; samskritam.el ends here
