@@ -9,19 +9,27 @@ This package is available in MELPA as =smaskritam-mode=.
   (use-package samskritam
     :ensure t
     :bind (("\C-cd"   . samskritam-word-at-point)
-	   ("\C-cD"   . samskritam-word))
+           ("\C-cD"   . samskritam-word)
+           ("\C-cs"   . message-buffer-display-dict-select))
+
     :init
     (setq google-translate-backend-method 'curl)
     (defun google-translate--search-tkk () "Search TKK." (list 430675 2721866130))
     (global-set-key "\C-ct" 'google-translate-smooth-translate)
     )
-  ;; Activate mode with M-x samskritam-mode
-  ;; Toggle ON/OFF Devanagari Inscript: C + \
-  ;; राम
+  ;; Hover cursor over राम and call C-cd.
+
+  ;; OR, something like this:
+  (use-package samskritam
+    :bind (("C-c C-s w"   . samskritam-word)
+           ("C-c C-s p" . samskritam-word-at-point)
+           ("C-c C-s s" . message-buffer-display-dict-select))
+    )
 
 #+end_src
 
 * Inspiration
 - [[https://ambuda.org/][ambuda.org]]
 - [[https://github.com/abo-abo/define-word][define-word]]
-- [[https://github.com/atykhonov/google-translate][google-translate]]  
+- [[https://github.com/atykhonov/google-translate][google-translate]]
+- [[https://github.com/karthink/popper/tree/master][popper.el]]
