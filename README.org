@@ -28,6 +28,54 @@ This package is available in MELPA as =smaskritam-mode=.
 
 #+end_src
 
+* Dictionaries
+=ambuda-dict-choices= is the list of dictionaries to call. Results from these calls are appended to *dict* buffers.
+Function =message-buffer-display-dict-select= sets the default dictionary (=message-buffer-display-dict=) to display in the message buffer.
+Each call to =samskritam-word= makes call to all =ambuda-dict-choices= and updates corresponding buffers.
+
+* Usage
+=C-cd= : Calls =Ambuda.org= to display word definition under cursor.
+=C-cD= : Asks user to provide word for word definition.
+=C-ct= : Asks user to provide text for translation.
+
+Instead of switching to =dict= buffers, I use =popper.el= to toggle between dictionaries in a popop window by updating the =popper-reference-buffers=.
+#+begin_src emacs-lisp
+  (use-package popper
+    :ensure t ; or :straight t
+    :bind (("C-`"   . popper-toggle)
+           ("M-`"   . popper-cycle)
+           ("C-M-`" . popper-toggle-type))
+    :init
+    (setq popper-reference-buffers
+          '("\\*Messages\\*"
+            "\\*Ambuda\\*"
+            "\\*Amarakosha\\*"
+            "\\*Apte\\*"
+            "\\*Apte-Kosh\\*"
+            "\\*Shabdasagara\\*"
+            "\\*Vacaspatyam\\*"
+            "\\*Shabdarthakausubha\\*"
+            "\\*MW\\*"
+            "Output\\*$"
+            "\\*Async Shell Command\\*"
+            help-mode
+            compilation-mode))
+    (popper-mode +1)
+    (popper-echo-mode +1))                ; For echo area hints
+
+#+end_src
+
+#+begin_src emacs-lisp
+;; Add some missing characters to devanagari-inscript
+  (with-temp-buffer
+    (activate-input-method "devanagari-inscript") ;; the input method has to be triggered for `quail-package-alist' to be non-nil
+    (let ((quail-current-package (assoc "devanagari-inscript" quail-package-alist)))
+     (quail-define-rules ((append . t))
+     ("^'" "॑")
+     ("^''" "᳚")
+     ("__" "॒")
+     )))
+#+end_src
 * Inspiration
 - [[https://ambuda.org/][ambuda.org]]
 - [[https://github.com/abo-abo/define-word][define-word]]
