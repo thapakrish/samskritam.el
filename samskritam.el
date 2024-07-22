@@ -175,6 +175,20 @@ In a non-interactive call DICT can be passed."
 
 
 
+;;;###autoload
+(defun message-buffer-display-dict-select ()
+  "Select ellama provider."
+  (interactive)
+  (let* ((dict-choices ambuda-dict-choices
+		       )
+	 (variants (mapcar #'car dict-choices)))
+    (setq message-buffer-display-dict
+	  (eval (alist-get
+		 (completing-read "Select dictionary: " variants)
+		 dict-choices nil nil #'string=)))
+    )
+  )
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Devanagari Script ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
