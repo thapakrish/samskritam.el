@@ -170,7 +170,7 @@ In a non-interactive call DICT can be passed."
           (t
            (substring-no-properties
             (thing-at-point 'word))))))
-    (samskritam-word word dict arg)))
+    (samskritam-word word arg)))
 
 
 
