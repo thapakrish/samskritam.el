@@ -39,9 +39,23 @@
 (require 'google-translate)
 (require 'google-translate-smooth-ui)
 (require 'popper)
+(require 'shr)
 
 (defvar samskritam-mode nil
   "Toggle `samskritam-mode'.")
+
+
+(defvar samskritam-ambuda-url nil
+  "Base ambuda.org URL.")
+
+(defvar samskritam-dbuf nil
+  "Buffer that stores parsed html after call to url/dict.")
+
+(defvar samskritam-beg nil
+  "Beginning point of `mark-region` in html buffer.")
+
+(defvar samskritam-end nil
+  "End point of `mark-region` in html buffer.")
 
 
 (defgroup samskritam nil
@@ -113,7 +127,11 @@ By default uses `samskritam-word-default-dict', but a prefix arg
 lets the user CHOOSE-DICT."
   (interactive "MWord: \ni\nP")
   (let* ((previous-buffer (current-buffer))
-	 (dict-choices samskritam-ambuda-dict-choices))
+	 (dict-choices samskritam-ambuda-dict-choices)
+	 (beg nil)
+	 (end nil)
+	 (url nil)
+	 (dbuf nil))
     (dolist (dict-choice dict-choices)
       (setq buffer-name (concat "*" (car dict-choice) "*"))
       (setq dict (cdr dict-choice))
@@ -122,11 +140,11 @@ lets the user CHOOSE-DICT."
 
 
       (with-current-buffer (get-buffer buffer-name)
-	(end-of-buffer)
+	(goto-char (point-max))
 	(insert (format "\n;;;;;;;;;;;;;\n;;; %s\n;;;;;;;;;;;;;\n"  word)))
       (setq url (format "https://ambuda.org/tools/dictionaries/%s/%s" dict word))
-      (setq tbuf (url-retrieve-synchronously url t t))
-      (shr-render-buffer tbuf)
+      (setq dbuf (url-retrieve-synchronously url t t))
+      (shr-render-buffer dbuf)
 
       ;; Goto some chars after the word "Clear"
       (setq beg (+ (search-forward "clear" nil t) 2))
@@ -134,9 +152,9 @@ lets the user CHOOSE-DICT."
       (setq end (- (search-forward "ambuda" nil t) 7))
       (append-to-buffer buffer-name beg end)
 
-      (if (string= dict samskritam-message-buffer-display-dict)
-	  (message "\n%s" (buffer-substring beg end)))
-
+      (when (string= dict samskritam-message-buffer-display-dict)
+	  (message "\n;;;;;;;;;;;;;\n;;; %s\n;;;;;;;;;;;;;\n" word)
+	  (message "%s" (buffer-substring beg end)))
       (delete-window))))
 
 
@@ -168,7 +186,7 @@ In a non-interactive call DICT can be passed."
 
 ;;;###autoload
 (defun samskritam-message-buffer-display-dict-select ()
-  "Select ellama provider."
+  "Select dictionary to display in the message buffer."
   (interactive)
   (let* ((dict-choices samskritam-ambuda-dict-choices)
 	 (variants (mapcar #'car dict-choices)))

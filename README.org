@@ -10,7 +10,7 @@ This package is available in MELPA as =smaskritam-mode=.
     :ensure t
     :bind (("\C-cd"   . samskritam-word-at-point)
            ("\C-cD"   . samskritam-word)
-           ("\C-cs"   . message-buffer-display-dict-select))
+           ("\C-cs"   . samskritam-message-buffer-display-dict-select))
 
     :init
     (setq google-translate-backend-method 'curl)
@@ -34,9 +34,9 @@ Function =message-buffer-display-dict-select= sets the default dictionary (=mess
 Each call to =samskritam-word= makes call to all =ambuda-dict-choices= and updates corresponding buffers.
 
 * Usage
-=C-cd= : Calls =Ambuda.org= to display word definition under cursor.
-=C-cD= : Asks user to provide word for word definition.
-=C-ct= : Asks user to provide text for translation.
+-- =C-cd= : Calls =Ambuda.org= to display word definition under cursor.
+-- =C-cD= : Asks user to provide word for word definition.
+-- =C-ct= : Asks user to provide text for translation.
 
 Instead of switching to =dict= buffers, I use =popper.el= to toggle between dictionaries in a popop window by updating the =popper-reference-buffers=.
 #+begin_src emacs-lisp
@@ -76,7 +76,7 @@ Instead of switching to =dict= buffers, I use =popper.el= to toggle between dict
      ("__" "॒")
      )))
 #+end_src
-* Inspiration
+* References
 - [[https://ambuda.org/][ambuda.org]]
 - [[https://github.com/abo-abo/define-word][define-word]]
 - [[https://github.com/atykhonov/google-translate][google-translate]]
