@@ -39,6 +39,7 @@
 (require 'google-translate)
 (require 'google-translate-smooth-ui)
 (require 'popper)
+(require 'transient)
 
 (defvar samskritam-mode nil
   "Toggle `samskritam-mode'.")
@@ -53,11 +54,6 @@
   :type 'string
   :group 'samskritam)
 
-(defcustom samskritam-transient-buffer nil
-  "When nil, transient buffer is turned off."
-  :type 'boolean
-  :group 'samskritam)
-
 (defcustom samskritam-mode-line '(:eval (propertize " SKT" 'face 'mode-line-emphasis))
   "String to show in the mode-line of Samskritam.
 Setting this tonil removes from the mode-line."
@@ -68,30 +64,6 @@ Setting this tonil removes from the mode-line."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Dictionary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defvar samskritam-word-limit 20
-  "Maximum amount of results to display.")
-
-
-(defcustom samskritam-mode-line-position 0
-  "Position in mode-line to place `samskritam-mode-line'."
-  :type 'integer
-  :group 'samskritam)
-
-
-(defcustom samskritam-word-displayfn-alist nil
-  "Alist for display functions per dict.
-By default, `message' is used."
-  :type '(alist
-          :key-type (symbol :tag "Name of dict")
-          :value-type (function :tag "Display function")))
-
-
-(defcustom samskritam-message-buffer-display-dict 'apte
-  "Default dictionary to display in message buffer."
-  :type 'string
-  :group 'samskritam)
-
 
 
 (defvar samskritam-ambuda-dict-choices '(
@@ -104,52 +76,59 @@ By default, `message' is used."
 			      ("Amarakosha" . "amara"))
   "Dictionaries in Ambuda.org to crawl from.")
 
-
-
-;;;###autoload
-(defun samskritam-word (word dict &optional choose-dict)
-  "Define WORD by referencing various dictionary DICT.
-By default uses `samskritam-word-default-dict', but a prefix arg
-lets the user CHOOSE-DICT."
-  (interactive "MWord: \ni\nP")
-  (let* ((previous-buffer (current-buffer))
-	 (dict-choices samskritam-ambuda-dict-choices))
-    (dolist (dict-choice dict-choices)
-      (setq buffer-name (concat "*" (car dict-choice) "*"))
-      (setq dict (cdr dict-choice))
-      (unless (buffer-live-p buffer-name)
-	(get-buffer-create buffer-name))
-
-
-      (with-current-buffer (get-buffer buffer-name)
-	(end-of-buffer)
-	(insert (format "\n;;;;;;;;;;;;;\n;;; %s\n;;;;;;;;;;;;;\n"  word)))
-      (setq url (format "https://ambuda.org/tools/dictionaries/%s/%s" dict word))
-      (setq tbuf (url-retrieve-synchronously url t t))
-      (shr-render-buffer tbuf)
-
-      ;; Goto some chars after the word "Clear"
-      (setq beg (+ (search-forward "clear" nil t) 2))
-      ;; Toto some chars before "Ambuda"
-      (setq end (- (search-forward "ambuda" nil t) 7))
-      (append-to-buffer buffer-name beg end)
-
-      (if (string= dict samskritam-message-buffer-display-dict)
-	  (message "\n%s" (buffer-substring beg end)))
-
-      (delete-window))))
+(defun samskritam--fetch-and-display-definition (word dict-name)
+  "Fetch definition for WORD from DICT-NAME and display it."
+  (let* ((dict-code (alist-get dict-name samskritam-ambuda-dict-choices nil nil #'string=))
+         (buffer-name (concat "*" dict-name "*"))
+         (url (format "https://ambuda.org/tools/dictionaries/%s/%s" dict-code word)))
+    (if (not dict-code)
+        (message "Invalid dictionary: %s" dict-name)
+      (let ((buffer (get-buffer-create buffer-name)))
+        (with-current-buffer buffer
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (insert (format "\n;;;;;;;;;;;;;\n;;; %s\n;;;;;;;;;;;;;\n" word)))
+          (let ((tbuf (url-retrieve-synchronously url t t)))
+            (with-current-buffer tbuf
+              (shr-render-buffer (current-buffer))
+              (goto-char (point-min))
+              (let ((beg (+ (search-forward "clear" nil t) 2))
+                    (end (- (search-forward "ambuda" nil t) 7)))
+                (with-current-buffer buffer
+                  (insert (buffer-substring-no-properties beg end)))
+                (kill-buffer (current-buffer))))))
+        (popper-toggle-type 'frame (get-buffer buffer-name))))))
 
 
 (declare-function pdf-view-active-region-text "ext:pdf-view")
 
-;;;###autoload
-(defun samskritam-word-at-point (arg)
-  "Use `samskritam-word' to define word at point.
-When the region is active, define the marked phrase.
-Prefix ARG lets you choose dict.
 
-In a non-interactive call DICT can be passed."
-  (interactive "P")
+(defvar samskritam-dictionary-key-bindings
+  '(("a" "Apte")
+    ("k" "Apte-Kosh")
+    ("m" "MW")
+    ("s" "Shabdasagara")
+    ("v" "Vacaspatyam")
+    ("h" "Shabdarthakausubha")
+    ("o" "Amarakosha"))
+  "Key bindings for dictionaries in the transient menu.")
+
+(transient-define-prefix samskritam-dictionary-transient (word)
+  "Choose a dictionary for WORD."
+  `("Dictionaries"
+    ,@(mapcar (lambda (binding)
+                (let ((key (car binding))
+                      (dict-name (cadr binding)))
+                  `((,key ,dict-name
+                         (lambda ()
+                           (interactive)
+                           (samskritam--fetch-and-display-definition word ,dict-name))))))
+              samskritam-dictionary-key-bindings)))
+
+;;;###autoload
+(defun samskritam-dictionary-at-point ()
+  "Show dictionary definitions for word at point."
+  (interactive)
   (let ((word
          (cond
           ((eq major-mode 'pdf-view-mode)
@@ -161,21 +140,9 @@ In a non-interactive call DICT can be passed."
           (t
            (substring-no-properties
             (thing-at-point 'word))))))
-    (samskritam-word word arg)))
-
-
-
-
-;;;###autoload
-(defun samskritam-message-buffer-display-dict-select ()
-  "Select ellama provider."
-  (interactive)
-  (let* ((dict-choices samskritam-ambuda-dict-choices)
-	 (variants (mapcar #'car dict-choices)))
-    (setq samskritam-message-buffer-display-dict
-	  (eval (alist-get
-		 (completing-read "Select dictionary: " variants)
-		 dict-choices nil nil #'string=)))))
+    (if word
+        (samskritam-dictionary-transient word)
+      (message "No word at point."))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -212,6 +179,12 @@ In a non-interactive call DICT can be passed."
                          (samskritam-toggle-alternative-input-method ,method arg interactive))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defvar samskritam-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "d") 'samskritam-dictionary-at-point)
+    map)
+  "Keymap for `samskritam-mode'.")
+
 ;;;###autoload
 (define-minor-mode samskritam-mode
   "Toggle Samskritam mode."
@@ -223,11 +196,14 @@ In a non-interactive call DICT can be passed."
 
   (if samskritam-mode
       (progn
+        (global-set-key (kbd samskritam-keymap-prefix) samskritam-mode-map)
 	;;	(google-translate--search-tkk)
 	(samskritam-reload-alternative-input-methods)
 	(add-to-list 'google-translate-supported-languages-alist '("Sanskrit"  . "sa"))
 	(message "samskritam mode activated!"))
-    (message "samskritam mode deactivated!"))
+    (progn
+      (global-unset-key (kbd samskritam-keymap-prefix))
+      (message "samskritam mode deactivated!")))
 
 
   (add-hook 'samskritam-mode-on-hook (lambda () (message "Samskritam turned on!")))
