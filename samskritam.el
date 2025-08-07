@@ -60,6 +60,22 @@ Setting this tonil removes from the mode-line."
   :group 'samskritam
   :type '(choice (const :tag "Off" nil)))
 
+(defcustom samskritam-default-dictionary "MW"
+  "The default dictionary to use."
+  :type '(choice (const "MW")
+                 (const "Apte")
+                 (const "Apte-Kosh")
+                 (const "Shabdasagara")
+                 (const "Vacaspatyam")
+                 (const "Shabdarthakausubha")
+                 (const "Amarakosha"))
+  :group 'samskritam)
+
+(defcustom samskritam-use-popper t
+  "Use popper.el to display dictionary buffers."
+  :type 'boolean
+  :group 'samskritam)
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -113,9 +129,11 @@ Setting this tonil removes from the mode-line."
               (samskritam-dictionary-mode))
             ;; Standardize delimiter formats
             (samskritam--standardize-delimiters))
-          (condition-case nil
-              (popper-toggle-type 'frame buffer)
-            (error (switch-to-buffer buffer))))
+          (if samskritam-use-popper
+              (condition-case nil
+                  (popper-toggle-type 'frame buffer)
+                (error (switch-to-buffer buffer)))
+            (switch-to-buffer buffer)))
       (message "No buffer found for %s dictionary" dict-name))))
 
 ;;;###autoload
@@ -129,9 +147,11 @@ Setting this tonil removes from the mode-line."
                   (buffer-list))))
     (if buffers
         (dolist (buf buffers)
-          (condition-case nil
-              (popper-toggle-type 'frame buf)
-            (error (switch-to-buffer buf))))
+          (if samskritam-use-popper
+              (condition-case nil
+                  (popper-toggle-type 'frame buf)
+                (error (switch-to-buffer buf)))
+            (switch-to-buffer buf)))
       (message "No dictionary buffers found"))))
 
 ;;;###autoload
@@ -206,18 +226,19 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
                 (kill-buffer (current-buffer))))))
         (setq samskritam-last-dictionary-buffer (get-buffer buffer-name))
         (when display-buffer
-          (condition-case nil
-              (popper-toggle-type 'frame samskritam-last-dictionary-buffer)
-            (error (switch-to-buffer samskritam-last-dictionary-buffer))))))))
+          (if samskritam-use-popper
+              (condition-case nil
+                  (popper-toggle-type 'frame samskritam-last-dictionary-buffer)
+                (error (switch-to-buffer samskritam-last-dictionary-buffer)))
+            (switch-to-buffer samskritam-last-dictionary-buffer)))))))
 
 ;;;###autoload
 (defun samskritam-define-word-at-point ()
-  "Fetch definition for the word at point from a default dictionary.
-The default dictionary is 'MW'."
+  "Fetch definition for the word at point from a default dictionary."
   (interactive)
   (let ((word (samskritam--get-word-at-point)))
     (if word
-        (samskritam--fetch-definition word "MW" t)
+        (samskritam--fetch-definition word samskritam-default-dictionary t)
       (message "No word at point."))))
 
 ;;;###autoload
@@ -358,9 +379,11 @@ The default dictionary is 'MW'."
   "Quit the current dictionary buffer."
   (interactive)
   (if (derived-mode-p 'samskritam-dictionary-mode)
-      (condition-case nil
-          (popper-toggle-type 'frame (current-buffer))
-        (error (bury-buffer)))
+      (if samskritam-use-popper
+          (condition-case nil
+              (popper-toggle-type 'frame (current-buffer))
+            (error (bury-buffer)))
+        (bury-buffer))
     (message "Not in a dictionary buffer")))
 
 ;;;###autoload
@@ -376,21 +399,19 @@ The default dictionary is 'MW'."
     (reverse words)))
 
 ;;;###autoload
-(defun samskritam--show-navigation-transient ()
-  "Show a persistent navigation transient for dictionary buffers."
-  (interactive)
-  (transient-define-prefix samskritam-navigation-transient ()
-    "Navigation transient for dictionary buffers."
-    :transient-suffix 'transient--do-stay
-    ["Navigation"
-     ("n" "Next Definition" samskritam-next-definition :transient t)
-     ("p" "Previous Definition" samskritam-previous-definition :transient t)
-     ("j" "Jump to word (completion)" samskritam--jump-to-word-definition-complete-annotated :transient t)
-     ("f" "Fold all" samskritam-fold-all-definitions :transient t)
-     ("u" "Unfold all" samskritam-unfold-all-definitions :transient t)
-     ("t" "Toggle current" samskritam-toggle-definition-folding :transient t)
-     ("q" "Quit" transient-quit-one :transient t)])
-  (samskritam-navigation-transient))
+(transient-define-prefix samskritam-navigation-transient ()
+  "Navigation transient for dictionary buffers."
+  [:description (lambda () (format "Navigation - Definitions: %d"
+                                   (length (samskritam--extract-words-from-buffer))))
+   :transient-suffix 'transient--do-stay]
+  ["Navigation"
+   ("n" "Next Definition" samskritam-next-definition :transient t)
+   ("p" "Previous Definition" samskritam-previous-definition :transient t)
+   ("j" "Jump to word (completion)" samskritam--jump-to-word-definition-complete-annotated :transient t)
+   ("f" "Fold all" samskritam-fold-all-definitions :transient t)
+   ("u" "Unfold all" samskritam-unfold-all-definitions :transient t)
+   ("t" "Toggle current" samskritam-toggle-definition-folding :transient t)
+   ("q" "Quit" transient-quit-one :transient t)])
 
 ;;;###autoload
 (defun samskritam-fold-all-definitions ()
@@ -508,24 +529,46 @@ The default dictionary is 'MW'."
     map)
   "Keymap for dictionary buffers with navigation shortcuts.")
 
+(transient-define-prefix samskritam-settings-transient ()
+  "Samskritam Settings"
+  ["Preferences"
+   ("d" "Default Dictionary" transient-var-edit :variable 'samskritam-default-dictionary)
+   ("k" "Keymap Prefix" transient-var-edit :variable 'samskritam-keymap-prefix)
+   ("p" "Use Popper" transient-var-edit :variable 'samskritam-use-popper)]
+  ["Persistence"
+   ("s" "Save Settings" (lambda () (interactive) (customize-save-variables) (message "Settings saved.")))
+   ("q" "Quit" transient-quit-one)])
+
 (transient-define-prefix samskritam--transient-display ()
   "Samskritam Transient"
-  []
+  [:description (lambda () (format "Samskritam - Word: %s | Buffer: %s"
+                                   (or samskritam--current-word "none")
+                                   (buffer-name)))]
   [
    ["Actions"
     ("W" "Enter Word" samskritam--enter-word-action)
-    ("d" "Define at Point" samskritam-define-word-at-point-choice)
-    ("t" "Translate Current" samskritam--translate-current-word)
+    ("d" "Define at Point" samskritam-define-word-at-point-choice
+     :if-mode '(text-mode org-mode))
+    ("t" "Translate Current" samskritam--translate-current-word
+     :inapt-if-not (lambda () samskritam--current-word))
     ("R" "Translate New" samskritam-translate-from-user)]
    ["Dictionaries"
-    ("a" "Apte"       (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Apte" t)))
-    ("k" "Apte-Kosh"  (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Apte-Kosh" t)))
-    ("m" "MW" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "MW" t)))
-    ("s" "Shabdasagara" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Shabdasagara" t)))
-    ("v" "Vacaspatyam" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Vacaspatyam" t)))
-    ("h" "Shabdarthakausubha" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Shabdarthakausubha" t)))
-    ("o" "Amarakosha" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Amarakosha" t)))
-    ("*" "All" samskritam--lookup-all-dictionaries)]
+    ("a" "Apte"       (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Apte" t))
+     :inapt-if-not (lambda () samskritam--current-word))
+    ("k" "Apte-Kosh"  (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Apte-Kosh" t))
+     :inapt-if-not (lambda () samskritam--current-word))
+    ("m" "MW" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "MW" t))
+     :inapt-if-not (lambda () samskritam--current-word))
+    ("s" "Shabdasagara" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Shabdasagara" t))
+     :inapt-if-not (lambda () samskritam--current-word))
+    ("v" "Vacaspatyam" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Vacaspatyam" t))
+     :inapt-if-not (lambda () samskritam--current-word))
+    ("h" "Shabdarthakausubha" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Shabdarthakausubha" t))
+     :inapt-if-not (lambda () samskritam--current-word))
+    ("o" "Amarakosha" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Amarakosha" t))
+     :inapt-if-not (lambda () samskritam--current-word))
+    ("*" "All" samskritam--lookup-all-dictionaries
+     :inapt-if-not (lambda () samskritam--current-word))]
    ]
   [
    ["Show Buffers"
@@ -540,7 +583,8 @@ The default dictionary is 'MW'."
   [
    ["Settings"
     ("i" "Toggle IME" samskritam--toggle-input-method)
-    ("p" "Toggle Popper" samskritam--toggle-popper)]
+    ("p" "Toggle Popper" samskritam--toggle-popper)
+    ("S" "Settings" samskritam-settings-transient)]
    [""
     ("q" "Quit" transient-quit-one)]
    ]
@@ -550,12 +594,8 @@ The default dictionary is 'MW'."
 ;;;###autoload
 (defun samskritam-transient (&optional word)
   "Set up the dynamic environment and display the Samskritam transient."
-  (let ((transient-current-prompt
-         (if word
-             (format "Samskritam (Word: %s)" word)
-           "Samskritam - Dictionary & Navigation")))
-    (setq samskritam--current-word word)
-    (samskritam--transient-display)))
+  (setq samskritam--current-word word)
+  (samskritam--transient-display))
 
 
 ;; Main command called by user
