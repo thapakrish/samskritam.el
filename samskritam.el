@@ -1,13 +1,13 @@
-;;; samskritam.el --- Show samskrit word definitions and translations -*- lexical-binding: t -*-
+;;; samskritam.el --- Show samskrit word definitions -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2022 Krishna Thapa
 
-;; Description: Samskrit definitions and translations
+;; Description: Samskrit definitions
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
 ;; Version: 0.2.0
-;; Package-Requires: ((emacs "28.1") (google-translate "0.12.0") (popper "0.4.6"))
-;; Keywords: samskrit, sanskrit, संस्कृत, dictionary, devanagari, translation, convenience, language
+;; Package-Requires: ((emacs "28.1") (popper "0.4.6"))
+;; Keywords: samskrit, sanskrit, संस्कृत, dictionary, devanagari, convenience, language
 
 ;; This file is not part of GNU Emacs
 
@@ -27,7 +27,6 @@
 ;;; Commentary:
 ;;
 ;; This package uses:
-;; Google Translate to translate to/from Sanskrit
 ;; Sends request to https://ambuda.org/ for dictionary definition of words
 ;; Add Vedic characters to devanagari-inscript
 ;;
@@ -36,8 +35,6 @@
 
 (require 'url-parse)
 (require 'url-http)
-(require 'google-translate)
-(require 'google-translate-smooth-ui)
 (require 'popper)
 (require 'transient)
 
@@ -280,32 +277,7 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
         (samskritam-transient entered-word)
       (message "No word entered."))))
 
-;; The non-interactive "worker" function for translation.
-(defun samskritam--do-translate (word)
-  "Translate WORD using Google Translate. Non-interactive."
-  (if word
-      (if (fboundp 'google-translate-smooth-translate)
-          (condition-case e
-              (google-translate-smooth-translate word)
-            (error (message "Google Translate error: %s" e)))
-        (message "Google Translate not available: function not found."))
-    (message "No word to translate.")))
 
-;; The interactive "command" for M-x usage.
-;;;###autoload
-(defun samskritam-translate-word-at-point ()
-  "Translate the word at point using Google Translate."
-  (interactive)
-  (samskritam--do-translate (samskritam--get-word-at-point)))
-
-;;;###autoload
-(defun samskritam-translate-from-user ()
-  "Translate a word entered by the user."
-  (interactive)
-  (let ((word (read-string "Enter word to translate: ")))
-    (if (not (string-empty-p word))
-        (samskritam--do-translate word)
-      (message "No word entered."))))
 
 ;;;###autoload
 (defun samskritam--toggle-input-method ()
@@ -316,13 +288,6 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
 ;; Helper functions for transient actions
 (defvar samskritam--current-word nil
   "The current word being processed in the transient.")
-
-(defun samskritam--translate-current-word ()
-  "Translate the current word in the transient context."
-  (interactive)
-  (if samskritam--current-word
-      (samskritam--do-translate samskritam--current-word)
-    (message "No word selected")))
 
 (defun samskritam--toggle-popper ()
   "Toggle popper."
@@ -548,10 +513,7 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
    ["Actions"
     ("W" "Enter Word" samskritam--enter-word-action)
     ("d" "Define at Point" samskritam-define-word-at-point-choice
-     :if-mode '(text-mode org-mode))
-    ("t" "Translate Current" samskritam--translate-current-word
-     :inapt-if-not (lambda () samskritam--current-word))
-    ("R" "Translate New" samskritam-translate-from-user)]
+     :if-mode '(text-mode org-mode))]
    ["Dictionaries"
     ("a" "Apte"       (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Apte" t))
      :inapt-if-not (lambda () samskritam--current-word))
@@ -660,9 +622,6 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
       (progn
         (global-set-key (kbd samskritam-keymap-prefix) 'samskritam)
 	(samskritam-reload-alternative-input-methods)
-	(if (boundp 'google-translate-supported-languages-alist)
-	    (add-to-list 'google-translate-supported-languages-alist '("Sanskrit"  . "sa"))
-	  (message "Google Translate not available: alist not found."))
 	(message "samskritam mode activated!"))
     (progn
       (global-unset-key (kbd samskritam-keymap-prefix))
