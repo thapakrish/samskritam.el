@@ -448,8 +448,13 @@ The default dictionary is 'MW'."
   :group 'samskritam
   (setq-local transient-current-prefix 'samskritam-navigation-transient)
   (setq-local header-line-format
-              (format " %s Dictionary - Nav: n/p, j, f/u, t, s (menu), q (quit), ? (help)"
-                      (replace-regexp-in-string "\\*" "" (buffer-name)))))
+              '(:eval
+                (let* ((buffer-name (buffer-name))
+                       (dict-name (replace-regexp-in-string "\\*" "" buffer-name)))
+                  (propertize
+                   (format " %s | [n]ext [p]rev | [j]ump | [f]old [u]nfold [t]oggle | [s]how menu | [q]uit"
+                           dict-name)
+                   'face 'header-line)))))
 
 ;; Key bindings for dictionary mode
 (define-key samskritam-dictionary-mode-map (kbd "n") 'samskritam-next-definition)
@@ -505,6 +510,7 @@ The default dictionary is 'MW'."
 
 (transient-define-prefix samskritam--transient-display ()
   "Samskritam Transient"
+  []
   [
    ["Actions"
     ("W" "Enter Word" samskritam--enter-word-action)
@@ -522,16 +528,7 @@ The default dictionary is 'MW'."
     ("*" "All" samskritam--lookup-all-dictionaries)]
    ]
   [
-   ["Navigation"
-    ("N" "Nav Transient" samskritam--show-navigation-transient)
-    ("n" "Next" samskritam-next-definition)
-    ("p" "Previous" samskritam-previous-definition)
-    ("j" "Jump" samskritam--jump-to-word-definition-complete-annotated)
-    ("f" "Fold All" samskritam-fold-all-definitions)
-    ("u" "Unfold All" samskritam-unfold-all-definitions)
-    ("T" "Toggle Fold" samskritam-toggle-definition-folding)]
    ["Show Buffers"
-    ("B" "Show All" samskritam--list-all-dictionary-buffers)
     ("A" "Show Apte" (lambda () (interactive) (samskritam--show-dictionary-buffer "Apte")))
     ("K" "Show Apte-Kosh" (lambda () (interactive) (samskritam--show-dictionary-buffer "Apte-Kosh")))
     ("M" "Show MW" (lambda () (interactive) (samskritam--show-dictionary-buffer "MW")))

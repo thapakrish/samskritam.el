@@ -14,18 +14,19 @@ This package is available on MELPA.
 Once installed and enabled, you can access all features through a transient menu or direct keybindings.
 
 ** Transient Menu
-- `M-x samskritam` or `C-c C-s` (by default) to bring up the main transient menu.
+- =M-x samskritam= or =C-c C-s= (by default) to bring up the main transient menu.
 - From the transient, you can:
   - Look up the word at point in various dictionaries.
   - Enter a word to look up.
   - Translate the word at point or a new word.
   - Navigate through dictionary definitions with folding, unfolding, and jumping.
-  - Toggle the Devanagari input method.
+
 
 ** Direct Keybindings
 For quicker access to common functions:
-- `C-c d`: Look up the definition for the word at the current point.
-- `C-c D`: Prompt for a word and look up its definition.
+- =C-c d=: Look up the definition for the word at the current point.
+- =C-c D=: Prompt for a word and look up its definition.
+-  =C-\= Toggle the Devanagari input method.
 
 * Key Features
 ** Dictionary Integration
@@ -40,12 +41,12 @@ The package fetches word definitions from multiple dictionaries available on Amb
 
 ** Navigation and Folding
 When viewing dictionary definitions, you can use the following keybindings for navigation:
-- `n`: Go to the next definition.
-- `p`: Go to the previous definition.
-- `j`: Jump to a specific definition using completion.
-- `f`: Fold all definitions.
-- `u`: Unfold all definitions.
-- `t`: Toggle the folding of the current definition.
+- =n=: Go to the next definition.
+- =p=: Go to the previous definition.
+- =j=: Jump to a specific definition using completion.
+- =f=: Fold all definitions.
+- =u=: Unfold all definitions.
+- =t=: Toggle the folding of the current definition.
 
 ** Google Translate Integration
 The package integrates with `google-translate` to provide smooth translations. You can translate the word at point or enter a new word for translation directly from the transient menu.
@@ -54,6 +55,18 @@ The package integrates with `google-translate` to provide smooth translations. Y
 You can customize the keymap prefix for the transient menu by setting the `samskritam-keymap-prefix` variable. The default is "C-c C-s".
 #+begin_src emacs-lisp
 (setq samskritam-keymap-prefix "C-c s")
+#+end_src
+
+#+begin_src emacs-lisp
+;; Add some missing characters to devanagari-inscript
+  (with-temp-buffer
+    (activate-input-method "devanagari-inscript") ;; the input method has to be triggered for `quail-package-alist' to be non-nil
+    (let ((quail-current-package (assoc "devanagari-inscript" quail-package-alist)))
+     (quail-define-rules ((append . t))
+     ("^'" "॑")
+     ("^''" "᳚")
+     ("__" "॒")
+     )))
 #+end_src
 
 * Inspiration
