@@ -1,81 +1,61 @@
+* samskritam.el
+This package provides a comprehensive interface for Sanskrit word definitions, translations, and navigation within Emacs. It uses a transient menu for easy access to all features, fetches dictionary definitions from [[https://ambuda.org/][Ambuda.org]], and integrates with Google Translate.
+
 * Installation
-This package is available in MELPA as =smaskritam-mode=.
-
-: M-x package-install RET samskritam-mode RET
-
-* Manual installation
-
+This package is available on MELPA.
 #+begin_src emacs-lisp
-  (use-package samskritam
-    :ensure t
-    :bind (("\C-cd"   . samskritam-word-at-point)
-           ("\C-cD"   . samskritam-word)
-           ("\C-cs"   . message-buffer-display-dict-select))
-
-    :init
-    (setq google-translate-backend-method 'curl)
-    (defun google-translate--search-tkk () "Search TKK." (list 430675 2721866130))
-    (global-set-key "\C-ct" 'google-translate-smooth-translate)
-    )
-  ;; Hover cursor over राम and call C-cd.
-
-  ;; OR, something like this:
-  (use-package samskritam
-    :bind (("C-c C-s w"   . samskritam-word)
-           ("C-c C-s p" . samskritam-word-at-point)
-           ("C-c C-s s" . message-buffer-display-dict-select))
-    )
-
+(use-package samskritam
+  :ensure t
+  :config
+  (samskritam-mode 1))
 #+end_src
-
-* Dictionaries
-=ambuda-dict-choices= is the list of dictionaries to call. Results from these calls are appended to *dict* buffers.
-Function =message-buffer-display-dict-select= sets the default dictionary (=message-buffer-display-dict=) to display in the message buffer.
-Each call to =samskritam-word= makes call to all =ambuda-dict-choices= and updates corresponding buffers.
 
 * Usage
-=C-cd= : Calls =Ambuda.org= to display word definition under cursor.
-=C-cD= : Asks user to provide word for word definition.
-=C-ct= : Asks user to provide text for translation.
+Once installed and enabled, you can access all features through a transient menu or direct keybindings.
 
-Instead of switching to =dict= buffers, I use =popper.el= to toggle between dictionaries in a popop window by updating the =popper-reference-buffers=.
+** Transient Menu
+- `M-x samskritam` or `C-c C-s` (by default) to bring up the main transient menu.
+- From the transient, you can:
+  - Look up the word at point in various dictionaries.
+  - Enter a word to look up.
+  - Translate the word at point or a new word.
+  - Navigate through dictionary definitions with folding, unfolding, and jumping.
+  - Toggle the Devanagari input method.
+
+** Direct Keybindings
+For quicker access to common functions:
+- `C-c d`: Look up the definition for the word at the current point.
+- `C-c D`: Prompt for a word and look up its definition.
+
+* Key Features
+** Dictionary Integration
+The package fetches word definitions from multiple dictionaries available on Ambuda.org, including:
+- Apte
+- Apte-Kosh
+- MW (Monier-Williams)
+- Shabdasagara
+- Vacaspatyam
+- Shabdarthakausubha
+- Amarakosha
+
+** Navigation and Folding
+When viewing dictionary definitions, you can use the following keybindings for navigation:
+- `n`: Go to the next definition.
+- `p`: Go to the previous definition.
+- `j`: Jump to a specific definition using completion.
+- `f`: Fold all definitions.
+- `u`: Unfold all definitions.
+- `t`: Toggle the folding of the current definition.
+
+** Google Translate Integration
+The package integrates with `google-translate` to provide smooth translations. You can translate the word at point or enter a new word for translation directly from the transient menu.
+
+* Customization
+You can customize the keymap prefix for the transient menu by setting the `samskritam-keymap-prefix` variable. The default is "C-c C-s".
 #+begin_src emacs-lisp
-  (use-package popper
-    :ensure t ; or :straight t
-    :bind (("C-`"   . popper-toggle)
-           ("M-`"   . popper-cycle)
-           ("C-M-`" . popper-toggle-type))
-    :init
-    (setq popper-reference-buffers
-          '("\\*Messages\\*"
-            "\\*Ambuda\\*"
-            "\\*Amarakosha\\*"
-            "\\*Apte\\*"
-            "\\*Apte-Kosh\\*"
-            "\\*Shabdasagara\\*"
-            "\\*Vacaspatyam\\*"
-            "\\*Shabdarthakausubha\\*"
-            "\\*MW\\*"
-            "Output\\*$"
-            "\\*Async Shell Command\\*"
-            help-mode
-            compilation-mode))
-    (popper-mode +1)
-    (popper-echo-mode +1))                ; For echo area hints
-
+(setq samskritam-keymap-prefix "C-c s")
 #+end_src
 
-#+begin_src emacs-lisp
-;; Add some missing characters to devanagari-inscript
-  (with-temp-buffer
-    (activate-input-method "devanagari-inscript") ;; the input method has to be triggered for `quail-package-alist' to be non-nil
-    (let ((quail-current-package (assoc "devanagari-inscript" quail-package-alist)))
-     (quail-define-rules ((append . t))
-     ("^'" "॑")
-     ("^''" "᳚")
-     ("__" "॒")
-     )))
-#+end_src
 * Inspiration
 - [[https://ambuda.org/][ambuda.org]]
 - [[https://github.com/abo-abo/define-word][define-word]]
