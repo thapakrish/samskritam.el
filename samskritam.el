@@ -6,7 +6,7 @@
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
 ;; Version: 0.2.0
-;; Package-Requires: ((emacs "28.1") (popper "0.4.6"))
+;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: samskrit, sanskrit, संस्कृत, dictionary, devanagari, convenience, language
 
 ;; This file is not part of GNU Emacs
@@ -35,8 +35,8 @@
 
 (require 'url-parse)
 (require 'url-http)
-(require 'popper)
 (require 'transient)
+(require 'custom)
 
 (defvar samskritam-mode nil
   "Toggle `samskritam-mode'.")
@@ -68,10 +68,7 @@ Setting this tonil removes from the mode-line."
                  (const "Amarakosha"))
   :group 'samskritam)
 
-(defcustom samskritam-use-popper t
-  "Use popper.el to display dictionary buffers."
-  :type 'boolean
-  :group 'samskritam)
+
 
 
 
@@ -80,6 +77,24 @@ Setting this tonil removes from the mode-line."
 
 (defvar samskritam-last-dictionary-buffer nil
   "The last dictionary buffer that was active.")
+
+(defvar samskritam-original-window nil
+  "The original window before switching to dictionary buffer.")
+
+(defvar samskritam-original-buffer nil
+  "The original buffer before switching to dictionary buffer.")
+
+(defvar samskritam-original-position nil
+  "The original position in the buffer before switching to dictionary buffer.")
+
+(defvar samskritam-dictionary-window nil
+  "The window created for the dictionary buffer.")
+
+(defun samskritam--capture-original-context ()
+  "Capture the original context (buffer, position, window) for restoration."
+  (setq samskritam-original-buffer (current-buffer))
+  (setq samskritam-original-position (point))
+  (setq samskritam-original-window (selected-window)))
 
 (defvar samskritam-ambuda-dict-choices '(
 			      ("Apte" . "apte")
@@ -126,11 +141,13 @@ Setting this tonil removes from the mode-line."
               (samskritam-dictionary-mode))
             ;; Standardize delimiter formats
             (samskritam--standardize-delimiters))
-          (if samskritam-use-popper
-              (condition-case nil
-                  (popper-toggle-type 'frame buffer)
-                (error (switch-to-buffer buffer)))
-            (switch-to-buffer buffer)))
+          ;; Clean up any existing dictionary window
+          (when (and samskritam-dictionary-window (window-live-p samskritam-dictionary-window))
+            (delete-window samskritam-dictionary-window))
+          (let ((new-window (split-window-below)))
+            (set-window-buffer new-window buffer)
+            (setq samskritam-dictionary-window new-window)
+            (select-window new-window)))
       (message "No buffer found for %s dictionary" dict-name))))
 
 ;;;###autoload
@@ -144,12 +161,8 @@ Setting this tonil removes from the mode-line."
                   (buffer-list))))
     (if buffers
         (dolist (buf buffers)
-          (if samskritam-use-popper
-              (condition-case nil
-                  (popper-toggle-type 'frame buf)
-                (error (switch-to-buffer buf)))
-            (switch-to-buffer buf)))
-      (message "No dictionary buffers found"))))
+          (switch-to-buffer buf)))
+      (message "No dictionary buffers found")))
 
 ;;;###autoload
 (defun samskritam--jump-to-last-dict-buffer ()
@@ -188,54 +201,59 @@ Setting this tonil removes from the mode-line."
       (goto-char pos)
       (message "No previous definitions found"))))
 
-(defun samskritam--fetch-definition (word dict-name &optional display-buffer)
-  "Fetch definition for WORD from DICT-NAME.
-If DISPLAY-BUFFER is non-nil, show the buffer."
+(defun samskritam--fetch-definition (word dict-name)
+  "Fetch definition for WORD from DICT-NAME and return the buffer.
+This function does NOT handle window display."
   (let* ((dict-code (alist-get dict-name samskritam-ambuda-dict-choices nil nil #'string=))
          (buffer-name (concat "*" dict-name "*"))
          (url (format "https://ambuda.org/tools/dictionaries/%s/%s" dict-code word)))
     (if (not dict-code)
-        (message "Invalid dictionary: %s" dict-name)
+        (progn
+          (message "Invalid dictionary: %s" dict-name)
+          nil) ; Return nil on failure
       (let ((buffer (get-buffer-create buffer-name)))
         (with-current-buffer buffer
           (unless (eq major-mode 'samskritam-dictionary-mode)
             (samskritam-dictionary-mode))
           (goto-char (point-min))
-          (if (re-search-forward (format "^;;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;$" (regexp-quote word)) nil t)
-              (message "Definition for '%s' already in buffer." word)
-            (let ((tbuf (url-retrieve-synchronously url t t)))
+          ;; Only fetch if definition isn't already in the buffer
+          (unless (re-search-forward (format "^;;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;$" (regexp-quote word)) nil t)
+            (message "Fetching definition for '%s'..." word)
+            ;; This block prevents the web request from splitting the window
+            (let* ((display-buffer-alist '((".*" display-buffer-no-window)))
+                   (pop-up-windows nil)
+                   (tbuf (url-retrieve-synchronously url t t)))
               (with-current-buffer tbuf
                 (shr-render-buffer (current-buffer))
                 (goto-char (point-min))
-                (let* ((beg (+ (search-forward "clear" nil t) 2))
-                       (end (- (search-forward "ambuda" nil t) 7))
-                       (definition (buffer-substring-no-properties beg end)))
-                  (let ((clean-definition (replace-regexp-in-string
-                                          "^\\([[:space:]]*\\)\\*"
-                                          "\\1•"
-                                          definition)))
-                    (with-current-buffer buffer
-                      (goto-char (point-max))
-                      (unless (bolp) (insert "\n"))
-                      (insert (format "\n;;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;\n%s\n" word clean-definition))
-                      (goto-char (point-max))))
-                  (message "Fetched definition for '%s'" word))
-                (kill-buffer (current-buffer))))))
+                (let* ((beg (search-forward "clear" nil t))
+                       (end (search-forward "ambuda" nil t))
+                       (definition (when (and beg end) (buffer-substring-no-properties (+ beg 2) (- end 7)))))
+                  (if definition
+                      (let ((clean-definition (replace-regexp-in-string "^\\([[:space:]]*\\)\\*" "\\1•" definition)))
+                        (with-current-buffer buffer
+                          (goto-char (point-max))
+                          (unless (bolp) (insert "\n"))
+                          (insert (format "\n;;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;\n%s\n" word clean-definition))
+                          (goto-char (point-max))))
+                    (message "Could not parse definition for '%s'" word)))
+                (kill-buffer (current-buffer)))))
+          (message "Fetched definition for '%s'" word))
+        ;; Return the buffer on success
         (setq samskritam-last-dictionary-buffer (get-buffer buffer-name))
-        (when display-buffer
-          (if samskritam-use-popper
-              (condition-case nil
-                  (popper-toggle-type 'frame samskritam-last-dictionary-buffer)
-                (error (switch-to-buffer samskritam-last-dictionary-buffer)))
-            (switch-to-buffer samskritam-last-dictionary-buffer)))))))
+        buffer))))
 
 ;;;###autoload
 (defun samskritam-define-word-at-point ()
-  "Fetch definition for the word at point from a default dictionary."
+  "Fetch and display definition for the word at point."
   (interactive)
-  (let ((word (samskritam--get-word-at-point)))
+  (samskritam--capture-original-context)
+  (let* ((word (samskritam--get-word-at-point)))
     (if word
-        (samskritam--fetch-definition word samskritam-default-dictionary t)
+        ;; 1. Fetch the data and get the buffer
+        (let ((dict-buffer (samskritam--fetch-definition word samskritam-default-dictionary)))
+          ;; 2. Display the buffer
+          (samskritam--display-dictionary-buffer dict-buffer))
       (message "No word at point."))))
 
 ;;;###autoload
@@ -256,13 +274,13 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
         (dolist (dict-pair samskritam-ambuda-dict-choices)
           (let ((dict-name (car dict-pair)))
             (condition-case err
-                (samskritam--fetch-definition samskritam--current-word dict-name nil)
+                (samskritam--fetch-definition samskritam--current-word dict-name)
               (error (message "Error looking up in %s: %s" dict-name (error-message-string err))))))
         (let ((mw-buffer (get-buffer "*MW*")))
           (if (and mw-buffer (> (buffer-size mw-buffer) 0))
               (progn
                 (setq samskritam-last-dictionary-buffer mw-buffer)
-                (switch-to-buffer mw-buffer)
+                (samskritam--display-dictionary-buffer mw-buffer)
                 (message "Looked up '%s' in all dictionaries, showing MW buffer" samskritam--current-word))
             (message "MW buffer not found or empty after population"))))
     (message "No word selected")))
@@ -289,12 +307,7 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
 (defvar samskritam--current-word nil
   "The current word being processed in the transient.")
 
-(defun samskritam--toggle-popper ()
-  "Toggle popper."
-  (interactive)
-  (condition-case nil
-      (popper-toggle)
-    (error (message "Popper not available"))))
+
 
 ;;;###autoload
 (defun samskritam--jump-to-word-definition (word)
@@ -341,14 +354,22 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
 
 ;;;###autoload
 (defun samskritam--quit-dictionary-buffer ()
-  "Quit the current dictionary buffer."
+  "Close the current dictionary buffer window and return to original buffer and position."
   (interactive)
   (if (derived-mode-p 'samskritam-dictionary-mode)
-      (if samskritam-use-popper
-          (condition-case nil
-              (popper-toggle-type 'frame (current-buffer))
-            (error (bury-buffer)))
-        (bury-buffer))
+      (let ((current-window (selected-window)))
+        ;; Delete the dictionary window (keeps the buffer alive)
+        (when (and samskritam-dictionary-window (window-live-p samskritam-dictionary-window))
+          (delete-window samskritam-dictionary-window))
+        ;; Reset the dictionary window variable
+        (setq samskritam-dictionary-window nil)
+        ;; Restore original context
+        (when (and samskritam-original-window (window-live-p samskritam-original-window))
+          (select-window samskritam-original-window)
+          (when (and samskritam-original-buffer (buffer-live-p samskritam-original-buffer))
+            (switch-to-buffer samskritam-original-buffer)
+            (when samskritam-original-position
+              (goto-char samskritam-original-position)))))
     (message "Not in a dictionary buffer")))
 
 ;;;###autoload
@@ -376,7 +397,8 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
    ("f" "Fold all" samskritam-fold-all-definitions :transient t)
    ("u" "Unfold all" samskritam-unfold-all-definitions :transient t)
    ("t" "Toggle current" samskritam-toggle-definition-folding :transient t)
-   ("q" "Quit" transient-quit-one :transient t)])
+   ("q" "Quit" transient-quit-one :transient t)]
+  )
 
 ;;;###autoload
 (defun samskritam-fold-all-definitions ()
@@ -497,11 +519,24 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
 (transient-define-prefix samskritam-settings-transient ()
   "Samskritam Settings"
   ["Preferences"
-   ("d" "Default Dictionary" transient-var-edit :variable 'samskritam-default-dictionary)
-   ("k" "Keymap Prefix" transient-var-edit :variable 'samskritam-keymap-prefix)
-   ("p" "Use Popper" transient-var-edit :variable 'samskritam-use-popper)]
+   ("d" "Default Dictionary" (lambda () (interactive) 
+                                (let ((new-dict (completing-read "Default Dictionary: " 
+                                                               '("MW" "Apte" "Apte-Kosh" "Shabdasagara" "Vacaspatyam" "Shabdarthakausubha" "Amarakosha") 
+                                                               nil t)))
+                                  (when new-dict
+                                    (setq samskritam-default-dictionary new-dict)
+                                    (message "Default dictionary set to: %s" new-dict)))) :transient t)
+   ("k" "Keymap Prefix" (lambda () (interactive) 
+                            (let ((new-prefix (read-string "Keymap Prefix: " samskritam-keymap-prefix)))
+                              (when new-prefix
+                                (setq samskritam-keymap-prefix new-prefix)
+                                (message "Keymap prefix set to: %s" new-prefix)))) :transient t)]
   ["Persistence"
-   ("s" "Save Settings" (lambda () (interactive) (customize-save-variables) (message "Settings saved.")))
+   ("s" "Save Settings" (lambda () (interactive) 
+                         (if (fboundp 'customize-save-variables)
+                             (customize-save-variables)
+                           (message "Settings saved.")) 
+                         (message "Settings saved.")) :transient t)
    ("q" "Quit" transient-quit-one)])
 
 (transient-define-prefix samskritam--transient-display ()
@@ -515,19 +550,33 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
     ("d" "Define at Point" samskritam-define-word-at-point-choice
      :if-mode '(text-mode org-mode))]
    ["Dictionaries"
-    ("a" "Apte"       (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Apte" t))
+    ("a" "Apte"       (lambda () (interactive) 
+                     (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Apte")))
+                       (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("k" "Apte-Kosh"  (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Apte-Kosh" t))
+    ("k" "Apte-Kosh"  (lambda () (interactive) 
+                     (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Apte-Kosh")))
+                       (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("m" "MW" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "MW" t))
+    ("m" "MW" (lambda () (interactive) 
+             (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "MW")))
+               (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("s" "Shabdasagara" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Shabdasagara" t))
+    ("s" "Shabdasagara" (lambda () (interactive) 
+                       (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Shabdasagara")))
+                         (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("v" "Vacaspatyam" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Vacaspatyam" t))
+    ("v" "Vacaspatyam" (lambda () (interactive) 
+                      (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Vacaspatyam")))
+                        (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("h" "Shabdarthakausubha" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Shabdarthakausubha" t))
+    ("h" "Shabdarthakausubha" (lambda () (interactive) 
+                             (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Shabdarthakausubha")))
+                               (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("o" "Amarakosha" (lambda () (interactive) (samskritam--fetch-definition samskritam--current-word "Amarakosha" t))
+    ("o" "Amarakosha" (lambda () (interactive) 
+                     (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Amarakosha")))
+                       (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
     ("*" "All" samskritam--lookup-all-dictionaries
      :inapt-if-not (lambda () samskritam--current-word))]
@@ -544,8 +593,7 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
    ]
   [
    ["Settings"
-    ("i" "Toggle IME" samskritam--toggle-input-method)
-    ("p" "Toggle Popper" samskritam--toggle-popper)
+    ("i" "Toggle IME" samskritam--toggle-input-method :transient t)
     ("S" "Settings" samskritam-settings-transient)]
    [""
     ("q" "Quit" transient-quit-one)]
@@ -565,6 +613,7 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
 (defun samskritam ()
   "Open the Samskritam transient. Captures word at point for context."
   (interactive)
+  (samskritam--capture-original-context)
   (samskritam-transient (samskritam--get-word-at-point)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -600,6 +649,19 @@ If DISPLAY-BUFFER is non-nil, show the buffer."
                                   method "\" instead of `default-input-method'")
                          (interactive "P\np")
                          (samskritam-toggle-alternative-input-method ,method arg interactive))))))
+
+;;;###autoload
+(defun samskritam--display-dictionary-buffer (buffer)
+  "Display BUFFER in a dedicated, reusable dictionary window."
+  (when buffer
+    ;; Clean up any existing dictionary window before creating a new one
+    (when (and samskritam-dictionary-window (window-live-p samskritam-dictionary-window))
+      (delete-window samskritam-dictionary-window))
+    ;; Create the new window and display the buffer
+    (let ((new-window (split-window-below)))
+      (set-window-buffer new-window buffer)
+      (setq samskritam-dictionary-window new-window)
+      (select-window new-window))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar samskritam-mode-map
