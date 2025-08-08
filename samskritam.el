@@ -37,6 +37,7 @@
 (require 'url-http)
 (require 'transient)
 (require 'custom)
+(require 'subr-x)
 
 (defvar samskritam-mode nil
   "Toggle `samskritam-mode'.")
@@ -95,6 +96,14 @@ Setting this tonil removes from the mode-line."
   (setq samskritam-original-buffer (current-buffer))
   (setq samskritam-original-position (point))
   (setq samskritam-original-window (selected-window)))
+
+;; Delimiter formatting for word sections inside dictionary buffers
+(defconst samskritam--delimiter-prefix "## "
+  "Prefix used to mark the start of a word definition block.")
+
+(defconst samskritam--delimiter-regex
+  (concat "^" (regexp-quote samskritam--delimiter-prefix) "\\s-*\\(.*\\)\\s-*$")
+  "Regex that matches a delimiter line. Capturing group 1 is the word (trimmed).")
 
 (defvar samskritam-ambuda-dict-choices '(
 			      ("Apte" . "apte")
@@ -180,9 +189,9 @@ Setting this tonil removes from the mode-line."
   (interactive)
   (let ((pos (point)))
     ;; If we're currently at a delimiter, move past it first
-    (when (looking-at "^;;;;;;;;;;;;;;; .* ;;;;;;;;;;;;;;;")
+    (when (looking-at samskritam--delimiter-regex)
       (forward-line))
-    (if (re-search-forward "^;;;;;;;;;;;;;;; .* ;;;;;;;;;;;;;;;$" nil t)
+    (if (re-search-forward samskritam--delimiter-regex nil t)
         (progn
           (beginning-of-line)
           (message "Next definition: %s" (match-string 0)))
@@ -194,7 +203,7 @@ Setting this tonil removes from the mode-line."
   "Jump to the previous word definition in the current/last dictionary buffer."
   (interactive)
   (let ((pos (point)))
-    (if (re-search-backward "^;;;;;;;;;;;;;;; .* ;;;;;;;;;;;;;;;$" nil t)
+    (if (re-search-backward samskritam--delimiter-regex nil t)
         (progn
           (beginning-of-line)
           (message "Previous definition: %s" (match-string 0)))
@@ -215,9 +224,11 @@ This function does NOT handle window display."
         (with-current-buffer buffer
           (unless (eq major-mode 'samskritam-dictionary-mode)
             (samskritam-dictionary-mode))
+          ;; Standardize any legacy delimiters to the new format first
+          (samskritam--standardize-delimiters)
           (goto-char (point-min))
           ;; Only fetch if definition isn't already in the buffer
-          (unless (re-search-forward (format "^;;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;$" (regexp-quote word)) nil t)
+          (unless (re-search-forward (format "%s%s$" (regexp-quote samskritam--delimiter-prefix) (regexp-quote word)) nil t)
             (message "Fetching definition for '%s'..." word)
             ;; This block prevents the web request from splitting the window
             (let* ((display-buffer-alist '((".*" display-buffer-no-window)))
@@ -234,7 +245,7 @@ This function does NOT handle window display."
                         (with-current-buffer buffer
                           (goto-char (point-max))
                           (unless (bolp) (insert "\n"))
-                          (insert (format "\n;;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;\n%s\n" word clean-definition))
+                          (insert (format "\n%s%s\n%s\n" samskritam--delimiter-prefix word clean-definition))
                           (goto-char (point-max))))
                     (message "Could not parse definition for '%s'" word)))
                 (kill-buffer (current-buffer)))))
@@ -314,7 +325,7 @@ This function does NOT handle window display."
   "Jump to the definition of WORD in the current dictionary buffer."
   (interactive "sEnter word to jump to: ")
   (goto-char (point-min))
-  (if (re-search-forward (format "^;;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;$" (regexp-quote word)) nil t)
+  (if (re-search-forward (format "^%s%s$" (regexp-quote samskritam--delimiter-prefix) (regexp-quote word)) nil t)
       (progn
         (beginning-of-line)
         (message "Found definition for '%s'" word))
@@ -378,8 +389,8 @@ This function does NOT handle window display."
   (let ((words '()))
     (save-excursion
       (goto-char (point-min))
-      (while (re-search-forward "^;;;;;;;;;;;;;;; \\([^;]*\\) ;;;;;;;;;;;;;;;$" nil t)
-        (let ((word (match-string 1)))
+      (while (re-search-forward samskritam--delimiter-regex nil t)
+        (let ((word (string-trim (match-string 1))))
           (when (and word (not (string-empty-p word)))
             (push word words)))))
     (reverse words)))
@@ -407,17 +418,17 @@ This function does NOT handle window display."
   (samskritam-unfold-all-definitions)
   (save-excursion
     (goto-char (point-min))
-    (while (re-search-forward "^;;;;;;;;;;;;;;; .* ;;;;;;;;;;;;;;;$" nil t)
+    (while (re-search-forward samskritam--delimiter-regex nil t)
       (let* ((delimiter-end (match-end 0))
              (content-start (save-excursion (goto-char delimiter-end) (forward-line 1) (point)))
              (content-end (save-excursion
                             (goto-char content-start)
-                            (if (re-search-forward "^;;;;;;;;;;;;;;; .* ;;;;;;;;;;;;;;;$" nil t)
+                            (if (re-search-forward samskritam--delimiter-regex nil t)
                                 (match-beginning 0)
                               (point-max)))))
         (when (> content-end content-start)
           (let ((overlay (make-overlay content-start content-end)))
-            (overlay-put overlay 'invisible t)
+            (overlay-put overlay 'invisible 'samskritam-fold)
             (overlay-put overlay 'evaporate t)
             (overlay-put overlay 'face '(:foreground "gray50"))))))))
 
@@ -432,20 +443,20 @@ This function does NOT handle window display."
   "Toggle folding of the current word definition."
   (interactive)
   (save-excursion
-    (let ((is-on-delimiter (progn (beginning-of-line) (looking-at "^;;;;;;;;;;;;;;; .* ;;;;;;;;;;;;;;;"))))
-      (if (or is-on-delimiter (re-search-backward "^;;;;;;;;;;;;;;; .* ;;;;;;;;;;;;;;;$" nil t))
+    (let ((is-on-delimiter (progn (beginning-of-line) (looking-at samskritam--delimiter-regex))))
+      (if (or is-on-delimiter (re-search-backward samskritam--delimiter-regex nil t))
           (let* ((delimiter-end (match-end 0))
                  (content-start (save-excursion (goto-char delimiter-end) (forward-line 1) (point)))
                  (content-end (save-excursion
                                 (goto-char content-start)
-                                (if (re-search-forward "^;;;;;;;;;;;;;;; .* ;;;;;;;;;;;;;;;$" nil t)
+                                (if (re-search-forward samskritam--delimiter-regex nil t)
                                     (match-beginning 0)
                                   (point-max))))
                  (overlays (overlays-in content-start content-end)))
             (if overlays
                 (mapc #'delete-overlay overlays)
               (let ((overlay (make-overlay content-start content-end)))
-                (overlay-put overlay 'invisible t)
+                (overlay-put overlay 'invisible 'samskritam-fold)
                 (overlay-put overlay 'evaporate t)
                 (overlay-put overlay 'face '(:foreground "gray50")))))
         (message "Not within a definition section.")))))
@@ -455,6 +466,8 @@ This function does NOT handle window display."
   "Major mode for Samskritam dictionary buffers."
   :group 'samskritam
   (setq-local transient-current-prefix 'samskritam-navigation-transient)
+  ;; Ensure our folding overlays become invisible in this buffer
+  (add-to-invisibility-spec 'samskritam-fold)
   (setq-local header-line-format
               '(:eval
                 (let* ((buffer-name (buffer-name))
@@ -660,6 +673,10 @@ This function does NOT handle window display."
     ;; Create the new window and display the buffer
     (let ((new-window (split-window-below)))
       (set-window-buffer new-window buffer)
+      (with-current-buffer buffer
+        (unless (eq major-mode 'samskritam-dictionary-mode)
+          (samskritam-dictionary-mode))
+        (samskritam--standardize-delimiters))
       (setq samskritam-dictionary-window new-window)
       (select-window new-window))))
 
