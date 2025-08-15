@@ -5,7 +5,7 @@
 ;; Description: Samskrit definitions
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
-;; Version: 0.2.0
+;; Version: 0.2.1
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: samskrit, sanskrit, संस्कृत, dictionary, devanagari, convenience, language
 
@@ -254,17 +254,29 @@ This function does NOT handle window display."
         (setq samskritam-last-dictionary-buffer (get-buffer buffer-name))
         buffer))))
 
+
 ;;;###autoload
-(defun samskritam-define-word-at-point ()
-  "Fetch and display definition for the word at point."
-  (interactive)
+(defun samskritam-define-word-at-point (prefix)
+  "Fetch and display definition for the word at point.
+With a prefix argument (e.g., `C-u`), prompt for a dictionary to use."
+  (interactive "P")
   (samskritam--capture-original-context)
-  (let* ((word (samskritam--get-word-at-point)))
+  (let ((word (samskritam--get-word-at-point)))
     (if word
-        ;; 1. Fetch the data and get the buffer
-        (let ((dict-buffer (samskritam--fetch-definition word samskritam-default-dictionary)))
-          ;; 2. Display the buffer
-          (samskritam--display-dictionary-buffer dict-buffer))
+        (let* ((dict-name (if prefix
+                             (completing-read
+                              "Dictionary: "
+                              (mapcar #'car samskritam-ambuda-dict-choices)
+                              nil ; predicate
+                              t   ; require-match
+                              nil ; initial-input
+                              nil ; history
+                              samskritam-default-dictionary)
+                           samskritam-default-dictionary)))
+          (if (and dict-name (not (string-empty-p dict-name)))
+              (let ((dict-buffer (samskritam--fetch-definition word dict-name)))
+                (samskritam--display-dictionary-buffer dict-buffer))
+            (message "No dictionary selected or operation cancelled.")))
       (message "No word at point."))))
 
 ;;;###autoload

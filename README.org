@@ -24,9 +24,10 @@ Once installed and enabled, you can access all features through a transient menu
 
 ** Direct Keybindings
 For quicker access to common functions:
-- =C-c d=: Look up the definition for the word at the current point.
+- =C-c d=: Look up the definition for the word at the current point in the default dictionary.
+- With a prefix argument (=C-u C-c d=), it will prompt for a dictionary to use.
 - =C-c D=: Prompt for a word and look up its definition.
--  =C-\= Toggle the Devanagari input method.
+- =C-\=: Toggle the Devanagari input method.
 
 * Key Features
 ** Dictionary Integration
