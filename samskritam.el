@@ -150,13 +150,14 @@ Setting this tonil removes from the mode-line."
               (samskritam-dictionary-mode))
             ;; Standardize delimiter formats
             (samskritam--standardize-delimiters))
-          ;; Clean up any existing dictionary window
-          (when (and samskritam-dictionary-window (window-live-p samskritam-dictionary-window))
-            (delete-window samskritam-dictionary-window))
-          (let ((new-window (split-window-below)))
-            (set-window-buffer new-window buffer)
-            (setq samskritam-dictionary-window new-window)
-            (select-window new-window)))
+          (if (and samskritam-dictionary-window
+                   (window-live-p samskritam-dictionary-window)
+                   (not (one-window-p)))
+              (set-window-buffer samskritam-dictionary-window buffer)
+            (let ((new-window (split-window-below)))
+              (set-window-buffer new-window buffer)
+              (setq samskritam-dictionary-window new-window)))
+          (select-window samskritam-dictionary-window))
       (message "No buffer found for %s dictionary" dict-name))))
 
 ;;;###autoload
@@ -679,18 +680,18 @@ With a prefix argument (e.g., `C-u`), prompt for a dictionary to use."
 (defun samskritam--display-dictionary-buffer (buffer)
   "Display BUFFER in a dedicated, reusable dictionary window."
   (when buffer
-    ;; Clean up any existing dictionary window before creating a new one
-    (when (and samskritam-dictionary-window (window-live-p samskritam-dictionary-window))
-      (delete-window samskritam-dictionary-window))
-    ;; Create the new window and display the buffer
-    (let ((new-window (split-window-below)))
-      (set-window-buffer new-window buffer)
-      (with-current-buffer buffer
-        (unless (eq major-mode 'samskritam-dictionary-mode)
-          (samskritam-dictionary-mode))
-        (samskritam--standardize-delimiters))
-      (setq samskritam-dictionary-window new-window)
-      (select-window new-window))))
+    (if (and samskritam-dictionary-window
+             (window-live-p samskritam-dictionary-window)
+             (not (one-window-p)))
+        (set-window-buffer samskritam-dictionary-window buffer)
+      (let ((new-window (split-window-below)))
+        (set-window-buffer new-window buffer)
+        (setq samskritam-dictionary-window new-window)))
+    (with-current-buffer buffer
+      (unless (eq major-mode 'samskritam-dictionary-mode)
+        (samskritam-dictionary-mode))
+      (samskritam--standardize-delimiters))
+    (select-window samskritam-dictionary-window)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar samskritam-mode-map
