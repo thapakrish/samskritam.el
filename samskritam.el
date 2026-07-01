@@ -5,8 +5,8 @@
 ;; Description: Samskrit definitions
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
-;; Version: 0.2.1
-;; Package-Requires: ((emacs "28.1"))
+;; Version: 0.2.2
+;; Package-Requires: ((emacs "28.1") (transient "0.3.0"))
 ;; Keywords: samskrit, sanskrit, संस्कृत, dictionary, devanagari, convenience, language
 
 ;; This file is not part of GNU Emacs
@@ -59,7 +59,7 @@
 
 (defcustom samskritam-mode-line '(:eval (propertize " SKT" 'face 'mode-line-emphasis))
   "String to show in the mode-line of Samskritam.
-Setting this tonil removes from the mode-line."
+Setting this to nil removes it from the mode-line."
   :group 'samskritam
   :type '(choice (const :tag "Off" nil)))
 
@@ -232,16 +232,18 @@ Setting this tonil removes from the mode-line."
                       (replace-regexp-in-string
                        "[[:space:]\n]+" " " (dom-texts item))))
                    items)))
-      (string-join
-       (mapcar (lambda (line) (concat "• " line))
-               (seq-filter (lambda (line) (not (string-empty-p line))) lines))
-       "\n"))))
+      (when response
+        (string-join
+         (mapcar (lambda (line) (concat "• " line))
+                 (seq-filter (lambda (line) (not (string-empty-p line))) lines))
+         "\n")))))
 
 (defun samskritam--fetch-definition (word dict-name)
   "Fetch definition for WORD from DICT-NAME and return the buffer.
 This function does NOT handle window display."
   (let* ((dict-code (alist-get dict-name samskritam-ambuda-dict-choices nil nil #'string=))
          (buffer-name (concat "*" dict-name "*"))
+         (created-buffer (not (get-buffer buffer-name)))
          (url (format "https://ambuda.org/tools/dictionaries/%s/%s"
                       dict-code
                       (url-hexify-string word))))
@@ -249,15 +251,21 @@ This function does NOT handle window display."
         (progn
           (message "Invalid dictionary: %s" dict-name)
           nil) ; Return nil on failure
-      (let ((buffer (get-buffer-create buffer-name)))
+      (let ((buffer (get-buffer-create buffer-name))
+            success)
         (with-current-buffer buffer
           (unless (eq major-mode 'samskritam-dictionary-mode)
             (samskritam-dictionary-mode))
           ;; Standardize any legacy delimiters to the new format first
           (samskritam--standardize-delimiters)
           (goto-char (point-min))
-          ;; Only fetch if definition isn't already in the buffer
-          (unless (re-search-forward (format "%s%s$" (regexp-quote samskritam--delimiter-prefix) (regexp-quote word)) nil t)
+          ;; Only fetch if definition isn't already in the buffer.
+          (if (re-search-forward
+               (format "%s%s$"
+                       (regexp-quote samskritam--delimiter-prefix)
+                       (regexp-quote word))
+               nil t)
+              (setq success t)
             (message "Fetching definition for '%s'..." word)
             ;; This block prevents the web request from splitting the window
             (let* ((display-buffer-alist '((".*" display-buffer-no-window)))
@@ -269,21 +277,29 @@ This function does NOT handle window display."
                     (with-current-buffer tbuf
                       (let ((definition (samskritam--ambuda-response-text)))
                         (if (and definition (not (string-empty-p definition)))
-                            (with-current-buffer buffer
-                              (goto-char (point-max))
-                              (unless (bolp) (insert "\n"))
-                              (insert (format "\n%s%s\n%s\n"
-                                              samskritam--delimiter-prefix
-                                              word
-                                              definition))
-                              (goto-char (point-max)))
+                            (progn
+                              (with-current-buffer buffer
+                                (goto-char (point-max))
+                                (unless (bolp) (insert "\n"))
+                                (insert (format "\n%s%s\n%s\n"
+                                                samskritam--delimiter-prefix
+                                                word
+                                                definition))
+                                (goto-char (point-max)))
+                              (setq success t)
+                              (message "Fetched definition for '%s'" word))
                           (message "Could not parse definition for '%s'" word))))
                   (when (buffer-live-p tbuf)
-                    (kill-buffer tbuf))))))
-          (message "Fetched definition for '%s'" word))
-        ;; Return the buffer on success
-        (setq samskritam-last-dictionary-buffer (get-buffer buffer-name))
-        buffer))))
+                    (kill-buffer tbuf)))))))
+        (if success
+            (progn
+              (setq samskritam-last-dictionary-buffer buffer)
+              buffer)
+          (when (and created-buffer
+                     (buffer-live-p buffer)
+                     (zerop (buffer-size buffer)))
+            (kill-buffer buffer))
+          nil)))))
 
 
 ;;;###autoload
@@ -730,8 +746,8 @@ Return to the original buffer and position."
 (define-minor-mode samskritam-mode
   "Toggle Samskritam mode."
   :global t
-  :version "0.5.2"
-  :lighter " SKT"
+  :version "0.2.2"
+  :lighter samskritam-mode-line
   :group 'samskritam
   :keymap samskritam-mode-map
 
@@ -739,14 +755,10 @@ Return to the original buffer and position."
       (progn
         (global-set-key (kbd samskritam-keymap-prefix) 'samskritam)
 	(samskritam-reload-alternative-input-methods)
-	(message "samskritam mode activated!"))
+	(message "Samskritam mode activated"))
     (progn
       (global-unset-key (kbd samskritam-keymap-prefix))
-      (message "samskritam mode deactivated!")))
-
-
-  (add-hook 'samskritam-mode-on-hook (lambda () (message "Samskritam turned on!")))
-  (add-hook 'samskritam-mode-off-hook (lambda () (message "Samskritam turned off!"))))
+      (message "Samskritam mode deactivated"))))
 
 ;;;; राम
 (provide 'samskritam)

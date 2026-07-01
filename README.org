@@ -10,6 +10,10 @@ This package is available on MELPA.
   (samskritam-mode 1))
 #+end_src
 
+Loading =samskritam.el= does not enable the global minor mode by itself.
+Call =(samskritam-mode 1)= explicitly, as above, to install the default
+keybindings.
+
 * Usage
 Once installed and enabled, you can access all features through a transient menu or direct keybindings.
 
@@ -56,6 +60,11 @@ The package integrates with `google-translate` to provide smooth translations. Y
 You can customize the keymap prefix for the transient menu by setting the `samskritam-keymap-prefix` variable. The default is "C-c C-s".
 #+begin_src emacs-lisp
 (setq samskritam-keymap-prefix "C-c s")
+#+end_src
+
+You can hide the mode-line indicator by customizing `samskritam-mode-line`:
+#+begin_src emacs-lisp
+(setq samskritam-mode-line nil)
 #+end_src
 
 #+begin_src emacs-lisp
