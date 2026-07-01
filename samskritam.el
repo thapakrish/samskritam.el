@@ -33,8 +33,13 @@
 ;;; Code:
 
 
-(require 'url-parse)
+(require 'cl-lib)
+(require 'dom)
+(require 'thingatpt)
 (require 'url-http)
+(require 'url-parse)
+(require 'url-util)
+(require 'seq)
 (require 'transient)
 (require 'custom)
 (require 'subr-x)
@@ -91,6 +96,9 @@ Setting this tonil removes from the mode-line."
 (defvar samskritam-dictionary-window nil
   "The window created for the dictionary buffer.")
 
+(defvar samskritam--current-word nil
+  "The current word being processed in the transient.")
+
 (defun samskritam--capture-original-context ()
   "Capture the original context (buffer, position, window) for restoration."
   (setq samskritam-original-buffer (current-buffer))
@@ -111,7 +119,7 @@ Setting this tonil removes from the mode-line."
 			      ("MW" . "mw")
 			      ("Shabdasagara" . "shabdasagara")
 			      ("Vacaspatyam" . "vacaspatyam")
-			      ("Shabdarthakausubha" . "shabdakalpadruma")
+			      ("Shabdarthakausubha" . "shabdartha-kaustubha")
 			      ("Amarakosha" . "amara"))
   "Dictionaries in Ambuda.org to crawl from.")
 
@@ -211,12 +219,32 @@ Setting this tonil removes from the mode-line."
       (goto-char pos)
       (message "No previous definitions found"))))
 
+(defun samskritam--ambuda-response-text ()
+  "Return dictionary result text from the current Ambuda HTML buffer."
+  (goto-char (point-min))
+  (when (re-search-forward "^$" nil t)
+    (let* ((dom (libxml-parse-html-region (point) (point-max)))
+           (response (dom-by-id dom "dict--response"))
+           (items (and response (dom-by-tag response 'li)))
+           (lines (mapcar
+                   (lambda (item)
+                     (string-trim
+                      (replace-regexp-in-string
+                       "[[:space:]\n]+" " " (dom-texts item))))
+                   items)))
+      (string-join
+       (mapcar (lambda (line) (concat "• " line))
+               (seq-filter (lambda (line) (not (string-empty-p line))) lines))
+       "\n"))))
+
 (defun samskritam--fetch-definition (word dict-name)
   "Fetch definition for WORD from DICT-NAME and return the buffer.
 This function does NOT handle window display."
   (let* ((dict-code (alist-get dict-name samskritam-ambuda-dict-choices nil nil #'string=))
          (buffer-name (concat "*" dict-name "*"))
-         (url (format "https://ambuda.org/tools/dictionaries/%s/%s" dict-code word)))
+         (url (format "https://ambuda.org/tools/dictionaries/%s/%s"
+                      dict-code
+                      (url-hexify-string word))))
     (if (not dict-code)
         (progn
           (message "Invalid dictionary: %s" dict-name)
@@ -235,21 +263,23 @@ This function does NOT handle window display."
             (let* ((display-buffer-alist '((".*" display-buffer-no-window)))
                    (pop-up-windows nil)
                    (tbuf (url-retrieve-synchronously url t t)))
-              (with-current-buffer tbuf
-                (shr-render-buffer (current-buffer))
-                (goto-char (point-min))
-                (let* ((beg (search-forward "clear" nil t))
-                       (end (search-forward "ambuda" nil t))
-                       (definition (when (and beg end) (buffer-substring-no-properties (+ beg 2) (- end 7)))))
-                  (if definition
-                      (let ((clean-definition (replace-regexp-in-string "^\\([[:space:]]*\\)\\*" "\\1•" definition)))
-                        (with-current-buffer buffer
-                          (goto-char (point-max))
-                          (unless (bolp) (insert "\n"))
-                          (insert (format "\n%s%s\n%s\n" samskritam--delimiter-prefix word clean-definition))
-                          (goto-char (point-max))))
-                    (message "Could not parse definition for '%s'" word)))
-                (kill-buffer (current-buffer)))))
+              (if (not tbuf)
+                  (message "Could not fetch definition for '%s'" word)
+                (unwind-protect
+                    (with-current-buffer tbuf
+                      (let ((definition (samskritam--ambuda-response-text)))
+                        (if (and definition (not (string-empty-p definition)))
+                            (with-current-buffer buffer
+                              (goto-char (point-max))
+                              (unless (bolp) (insert "\n"))
+                              (insert (format "\n%s%s\n%s\n"
+                                              samskritam--delimiter-prefix
+                                              word
+                                              definition))
+                              (goto-char (point-max)))
+                          (message "Could not parse definition for '%s'" word))))
+                  (when (buffer-live-p tbuf)
+                    (kill-buffer tbuf))))))
           (message "Fetched definition for '%s'" word))
         ;; Return the buffer on success
         (setq samskritam-last-dictionary-buffer (get-buffer buffer-name))
@@ -327,12 +357,6 @@ With a prefix argument (e.g., `C-u`), prompt for a dictionary to use."
   (interactive)
   (samskritam-toggle-alternative-input-method "devanagari-inscript"))
 
-;; Helper functions for transient actions
-(defvar samskritam--current-word nil
-  "The current word being processed in the transient.")
-
-
-
 ;;;###autoload
 (defun samskritam--jump-to-word-definition (word)
   "Jump to the definition of WORD in the current dictionary buffer."
@@ -373,24 +397,25 @@ With a prefix argument (e.g., `C-u`), prompt for a dictionary to use."
   "Create a completion table with annotations for WORDS."
   (let ((table (make-hash-table :test 'equal)))
     (dolist (word words)
-      (puthash word (format "%s" word) table)))
-    table)
+      (puthash word (format "%s" word) table))
+    table))
 
 ;;;###autoload
 (defun samskritam--quit-dictionary-buffer ()
-  "Close the current dictionary buffer window and return to original buffer and position."
+  "Close the current dictionary buffer window.
+Return to the original buffer and position."
   (interactive)
   (if (derived-mode-p 'samskritam-dictionary-mode)
-      (let ((current-window (selected-window)))
-        ;; Delete the dictionary window (keeps the buffer alive)
-        (when (and samskritam-dictionary-window (window-live-p samskritam-dictionary-window))
+      (progn
+        (when (and samskritam-dictionary-window
+                   (window-live-p samskritam-dictionary-window))
           (delete-window samskritam-dictionary-window))
-        ;; Reset the dictionary window variable
         (setq samskritam-dictionary-window nil)
-        ;; Restore original context
-        (when (and samskritam-original-window (window-live-p samskritam-original-window))
+        (when (and samskritam-original-window
+                   (window-live-p samskritam-original-window))
           (select-window samskritam-original-window)
-          (when (and samskritam-original-buffer (buffer-live-p samskritam-original-buffer))
+          (when (and samskritam-original-buffer
+                     (buffer-live-p samskritam-original-buffer))
             (switch-to-buffer samskritam-original-buffer)
             (when samskritam-original-position
               (goto-char samskritam-original-position)))))
@@ -722,12 +747,6 @@ With a prefix argument (e.g., `C-u`), prompt for a dictionary to use."
 
   (add-hook 'samskritam-mode-on-hook (lambda () (message "Samskritam turned on!")))
   (add-hook 'samskritam-mode-off-hook (lambda () (message "Samskritam turned off!"))))
-
-;; Enable the mode by default
-(samskritam-mode 1)
-
-;; Set up key binding immediately
-(global-set-key (kbd samskritam-keymap-prefix) 'samskritam)
 
 ;;;; राम
 (provide 'samskritam)
