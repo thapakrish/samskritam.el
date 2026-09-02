@@ -1,8 +1,8 @@
-;;; samskritam.el --- Show samskrit word definitions -*- lexical-binding: t -*-
+;;; samskritam.el --- Sanskrit dictionaries, translation, and input -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2022 Krishna Thapa
 
-;; Description: Samskrit definitions
+;; Description: Sanskrit dictionaries, translation, and input
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
 ;; Version: 0.2.2
@@ -27,7 +27,8 @@
 ;;; Commentary:
 ;;
 ;; This package uses:
-;; Sends request to https://ambuda.org/ for dictionary definition of words
+;; Sends requests to https://ambuda.org/ for dictionary definitions and
+;; optionally uses the google-translate package for translations.
 ;; Add Vedic characters to devanagari-inscript
 ;;
 ;;; Code:
@@ -54,7 +55,7 @@
 
 
 (defgroup samskritam nil
-  "Provide functions for word definitions, navigation, and input."
+  "Provide functions for word definitions, translation, navigation, and input."
   :group 'convenience)
 
 (defun samskritam--set-keymap-prefix (symbol value)
@@ -101,6 +102,13 @@ Setting this to nil removes it from the mode-line."
 (defcustom samskritam-network-timeout 15
   "Maximum number of seconds to wait for an Ambuda response."
   :type 'integer
+  :group 'samskritam)
+
+(defcustom samskritam-translation-language "en"
+  "Language code to use for translations to and from Sanskrit.
+The value must be a language code understood by google-translate, such
+as `en' for English or `ne' for Nepali."
+  :type 'string
   :group 'samskritam)
 
 
@@ -154,6 +162,9 @@ Setting this to nil removes it from the mode-line."
 
 
 (declare-function pdf-view-active-region-text "ext:pdf-view")
+(declare-function google-translate-translate "google-translate-core-ui"
+                  (source-language target-language text
+                                   &optional output-destination))
 
 ;;;###autoload
 (defun samskritam--get-word-at-point ()
@@ -174,6 +185,68 @@ Setting this to nil removes it from the mode-line."
 (defun samskritam--get-word-from-user ()
   "Prompt user for a word to look up."
   (read-string "Enter word to look up: "))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;; Translation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun samskritam--ensure-google-translate ()
+  "Load the optional google-translate integration or signal a user error."
+  (unless (require 'google-translate nil t)
+    (user-error
+     "Translation requires google-translate; install that package from MELPA"))
+  (unless (fboundp 'google-translate-translate)
+    (user-error "Installed google-translate does not provide its translation API")))
+
+(defun samskritam--translation-text ()
+  "Return text at point or prompt for text to translate."
+  (or (samskritam--get-word-at-point)
+      (read-string "Text to translate: ")))
+
+(defun samskritam--translate (source-language target-language text)
+  "Translate TEXT from SOURCE-LANGUAGE to TARGET-LANGUAGE."
+  (unless (and (stringp source-language)
+               (stringp target-language))
+    (user-error "Translation language codes must be strings"))
+  (setq source-language (string-trim source-language)
+        target-language (string-trim target-language))
+  (when (or (string-empty-p source-language)
+            (string-empty-p target-language))
+    (user-error "Customize `samskritam-translation-language' first"))
+  (unless (stringp text)
+    (user-error "No text to translate"))
+  (setq text (string-trim text))
+  (when (string-empty-p text)
+    (user-error "No text to translate"))
+  (samskritam--ensure-google-translate)
+  (google-translate-translate source-language target-language text))
+
+;;;###autoload
+(defun samskritam-translate-from-sanskrit (&optional text)
+  "Translate Sanskrit TEXT into `samskritam-translation-language'.
+Interactively, use the active region or word at point, prompting when
+neither is available."
+  (interactive)
+  (samskritam--translate "sa" samskritam-translation-language
+                         (or text (samskritam--translation-text))))
+
+;;;###autoload
+(defun samskritam-translate-to-sanskrit (&optional text)
+  "Translate TEXT from `samskritam-translation-language' into Sanskrit.
+Interactively, use the active region or word at point, prompting when
+neither is available."
+  (interactive)
+  (samskritam--translate samskritam-translation-language "sa"
+                         (or text (samskritam--translation-text))))
+
+(defun samskritam--translate-current-from-sanskrit ()
+  "Translate the transient's current word from Sanskrit."
+  (interactive)
+  (samskritam-translate-from-sanskrit samskritam--current-word))
+
+(defun samskritam--translate-current-to-sanskrit ()
+  "Translate the transient's current word into Sanskrit."
+  (interactive)
+  (samskritam-translate-to-sanskrit samskritam--current-word))
 
 ;;;###autoload
 (defun samskritam--show-dictionary-buffer (dict-name)
@@ -648,6 +721,19 @@ Return to the original buffer and position."
       (customize-set-variable 'samskritam-keymap-prefix new-prefix)
       (message "Keymap prefix set to: %s" new-prefix))))
 
+(defun samskritam--set-translation-language-action ()
+  "Prompt for and set the non-Sanskrit translation language code."
+  (interactive)
+  (let ((new-language
+         (read-string "Translation language code: "
+                      samskritam-translation-language)))
+    (setq new-language (string-trim new-language))
+    (unless (string-empty-p new-language)
+      (customize-set-variable
+       'samskritam-translation-language new-language)
+      (message "Translation language set to: %s"
+               samskritam-translation-language))))
+
 (defun samskritam--save-settings ()
   "Persist the settings exposed by `samskritam-settings-transient'."
   (interactive)
@@ -655,6 +741,8 @@ Return to the original buffer and position."
    'samskritam-default-dictionary samskritam-default-dictionary)
   (customize-save-variable
    'samskritam-keymap-prefix samskritam-keymap-prefix)
+  (customize-save-variable
+   'samskritam-translation-language samskritam-translation-language)
   (message "Settings saved."))
 
 (transient-define-prefix samskritam-settings-transient ()
@@ -662,7 +750,9 @@ Return to the original buffer and position."
   ["Preferences"
    ("d" "Default Dictionary" samskritam--set-default-dictionary-action
     :transient t)
-   ("k" "Keymap Prefix" samskritam--set-keymap-prefix-action :transient t)]
+   ("k" "Keymap Prefix" samskritam--set-keymap-prefix-action :transient t)
+   ("l" "Translation Language" samskritam--set-translation-language-action
+    :transient t)]
   ["Persistence"
    ("s" "Save Settings" samskritam--save-settings :transient t)
    ("q" "Quit" transient-quit-one)])
@@ -676,7 +766,19 @@ Return to the original buffer and position."
    ["Actions"
     ("W" "Enter Word" samskritam--enter-word-action)
     ("d" "Define at Point" samskritam-define-word-at-point-choice
-     :if-mode '(text-mode org-mode))]
+     :if-mode '(text-mode org-mode))
+    ("t" "Sanskrit -> translation language"
+     samskritam--translate-current-from-sanskrit
+     :description (lambda ()
+                    (format "Sanskrit -> %s"
+                            samskritam-translation-language))
+     :inapt-if-not (lambda () samskritam--current-word))
+    ("T" "Translation language -> Sanskrit"
+     samskritam--translate-current-to-sanskrit
+     :description (lambda ()
+                    (format "%s -> Sanskrit"
+                            samskritam-translation-language))
+     :inapt-if-not (lambda () samskritam--current-word))]
    ["Dictionaries"
     ("a" "Apte"       (lambda () (interactive)
                      (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Apte")))

@@ -1,5 +1,5 @@
 * samskritam.el
-This package provides an interface for Sanskrit word definitions and navigation within Emacs. It uses a transient menu for easy access to all features and fetches dictionary definitions from [[https://ambuda.org/][Ambuda.org]].
+This package provides an interface for Sanskrit word definitions, translation, input, and navigation within Emacs. It uses a transient menu for easy access to all features, fetches dictionary definitions from [[https://ambuda.org/][Ambuda.org]], and optionally integrates with [[https://github.com/atykhonov/google-translate][google-translate]].
 
 * Installation
 This package is available on MELPA.
@@ -8,6 +8,13 @@ This package is available on MELPA.
   :ensure t
   :config
   (samskritam-mode 1))
+#+end_src
+
+Translation support uses the optional =google-translate= package, which is
+also available from MELPA:
+#+begin_src emacs-lisp
+(use-package google-translate
+  :ensure t)
 #+end_src
 
 Loading =samskritam.el= does not enable the global minor mode by itself.
@@ -22,6 +29,7 @@ Once installed and enabled, you can access all features through a transient menu
 - From the transient, you can:
   - Look up the word at point in various dictionaries.
   - Enter a word to look up.
+  - Translate the current word from Sanskrit with =t= or into Sanskrit with =T=.
   - Navigate through dictionary definitions with folding, unfolding, and jumping.
 
 
@@ -31,6 +39,8 @@ For quicker access to common functions:
 - With a prefix argument (=C-u C-c d=), it will prompt for a dictionary to use.
 - =C-c D=: Prompt for a word and look up its definition.
 - =C-\=: Toggle the Devanagari input method.
+- =M-x samskritam-translate-from-sanskrit=: Translate the region or word at point from Sanskrit.
+- =M-x samskritam-translate-to-sanskrit=: Translate the region or word at point into Sanskrit.
 
 * Key Features
 ** Dictionary Integration
@@ -52,10 +62,21 @@ When viewing dictionary definitions, you can use the following keybindings for n
 - =u=: Unfold all definitions.
 - =t=: Toggle the folding of the current definition.
 
+** Google Translate Integration
+The optional =google-translate= integration provides explicit translations
+between Sanskrit (language code =sa=) and a customizable second language.
+It uses the output destination configured by =google-translate=.
+
 * Customization
 You can customize the keymap prefix for the transient menu by setting the `samskritam-keymap-prefix` variable. The default is "C-c C-s".
 #+begin_src emacs-lisp
 (customize-set-variable 'samskritam-keymap-prefix "C-c s")
+#+end_src
+
+The second translation language defaults to English. Set it to any language
+code supported by Google Translate, such as =ne= for Nepali:
+#+begin_src emacs-lisp
+(customize-set-variable 'samskritam-translation-language "ne")
 #+end_src
 
 You can hide the mode-line indicator by customizing `samskritam-mode-line`:
@@ -78,4 +99,5 @@ You can hide the mode-line indicator by customizing `samskritam-mode-line`:
 * Inspiration
 - [[https://ambuda.org/][ambuda.org]]
 - [[https://github.com/abo-abo/define-word][define-word]]
+- [[https://github.com/atykhonov/google-translate][google-translate]]
 - [[https://github.com/karthink/popper/tree/master][popper.el]]
