@@ -113,6 +113,25 @@
     (should-error (samskritam--ensure-google-translate)
                   :type 'user-error)))
 
+(ert-deftest samskritam-translation-registers-sanskrit-display-name ()
+  (let* ((variable 'google-translate-supported-languages-alist)
+         (was-bound (boundp variable))
+         (old-value (and was-bound (symbol-value variable))))
+    (unwind-protect
+        (progn
+          (set variable nil)
+          (cl-letf (((symbol-function 'require)
+                     (lambda (feature &optional _filename _noerror)
+                       (eq feature 'google-translate)))
+                    ((symbol-function 'google-translate-translate)
+                     #'ignore))
+            (samskritam--ensure-google-translate))
+          (should (equal (assoc "Sanskrit" (symbol-value variable))
+                         '("Sanskrit" . "sa"))))
+      (if was-bound
+          (set variable old-value)
+        (makunbound variable)))))
+
 (ert-deftest samskritam-enter-word-captures-current-context ()
   (let ((source-a (generate-new-buffer " source-a"))
         (source-b (generate-new-buffer " source-b"))

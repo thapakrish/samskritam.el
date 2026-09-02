@@ -165,6 +165,7 @@ as `en' for English or `ne' for Nepali."
 (declare-function google-translate-translate "google-translate-core-ui"
                   (source-language target-language text
                                    &optional output-destination))
+(defvar google-translate-supported-languages-alist)
 
 ;;;###autoload
 (defun samskritam--get-word-at-point ()
@@ -195,7 +196,12 @@ as `en' for English or `ne' for Nepali."
     (user-error
      "Translation requires google-translate; install that package from MELPA"))
   (unless (fboundp 'google-translate-translate)
-    (user-error "Installed google-translate does not provide its translation API")))
+    (user-error "Installed google-translate does not provide its translation API"))
+  ;; google-translate can translate language code "sa", but its UI table does
+  ;; not currently include a display name for it.
+  (when (boundp 'google-translate-supported-languages-alist)
+    (add-to-list 'google-translate-supported-languages-alist
+                 '("Sanskrit" . "sa"))))
 
 (defun samskritam--translation-text ()
   "Return text at point or prompt for text to translate."
