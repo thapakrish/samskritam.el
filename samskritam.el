@@ -5,7 +5,7 @@
 ;; Description: Sanskrit dictionaries, translation, and input
 ;; Author: Krishna Thapa <thapakrish@gmail.com>
 ;; URL: https://github.com/thapakrish/samskritam
-;; Version: 0.2.2
+;; Version: 0.3.0
 ;; Package-Requires: ((emacs "28.1") (transient "0.3.0"))
 ;; Keywords: samskrit, sanskrit, संस्कृत, dictionary, devanagari, convenience, language
 
@@ -919,7 +919,7 @@ Capture the word at point for context."
 (define-minor-mode samskritam-mode
   "Toggle Samskritam mode."
   :global t
-  :version "0.2.2"
+  :version "0.3.0"
   :lighter samskritam-mode-line
   :group 'samskritam
   :keymap samskritam-mode-map
