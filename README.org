@@ -1,5 +1,5 @@
 * samskritam.el
-This package provides a comprehensive interface for Sanskrit word definitions, translations, and navigation within Emacs. It uses a transient menu for easy access to all features, fetches dictionary definitions from [[https://ambuda.org/][Ambuda.org]], and integrates with Google Translate.
+This package provides an interface for Sanskrit word definitions and navigation within Emacs. It uses a transient menu for easy access to all features and fetches dictionary definitions from [[https://ambuda.org/][Ambuda.org]].
 
 * Installation
 This package is available on MELPA.
@@ -22,7 +22,6 @@ Once installed and enabled, you can access all features through a transient menu
 - From the transient, you can:
   - Look up the word at point in various dictionaries.
   - Enter a word to look up.
-  - Translate the word at point or a new word.
   - Navigate through dictionary definitions with folding, unfolding, and jumping.
 
 
@@ -53,13 +52,10 @@ When viewing dictionary definitions, you can use the following keybindings for n
 - =u=: Unfold all definitions.
 - =t=: Toggle the folding of the current definition.
 
-** Google Translate Integration
-The package integrates with `google-translate` to provide smooth translations. You can translate the word at point or enter a new word for translation directly from the transient menu.
-
 * Customization
 You can customize the keymap prefix for the transient menu by setting the `samskritam-keymap-prefix` variable. The default is "C-c C-s".
 #+begin_src emacs-lisp
-(setq samskritam-keymap-prefix "C-c s")
+(customize-set-variable 'samskritam-keymap-prefix "C-c s")
 #+end_src
 
 You can hide the mode-line indicator by customizing `samskritam-mode-line`:
@@ -82,5 +78,4 @@ You can hide the mode-line indicator by customizing `samskritam-mode-line`:
 * Inspiration
 - [[https://ambuda.org/][ambuda.org]]
 - [[https://github.com/abo-abo/define-word][define-word]]
-- [[https://github.com/atykhonov/google-translate][google-translate]]
 - [[https://github.com/karthink/popper/tree/master][popper.el]]

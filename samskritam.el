@@ -47,21 +47,45 @@
 (defvar samskritam-mode nil
   "Toggle `samskritam-mode'.")
 
+(defvar samskritam-mode-map)
+
+(defvar samskritam--bound-keymap-prefix nil
+  "Prefix currently installed in `samskritam-mode-map'.")
+
 
 (defgroup samskritam nil
-  "Provide functions for word definitions and translations."
+  "Provide functions for word definitions, navigation, and input."
   :group 'convenience)
+
+(defun samskritam--set-keymap-prefix (symbol value)
+  "Set SYMBOL to key sequence VALUE and refresh the minor-mode map."
+  (unless (and (stringp value) (not (string-empty-p value)))
+    (error "Samskritam keymap prefix must be a non-empty string"))
+  (condition-case err
+      (kbd value)
+    (error
+     (error "Invalid Samskritam keymap prefix %S: %s"
+            value (error-message-string err))))
+  (set-default symbol value)
+  (when (boundp 'samskritam-mode-map)
+    (when samskritam--bound-keymap-prefix
+      (define-key samskritam-mode-map
+                  (kbd samskritam--bound-keymap-prefix) nil))
+    (define-key samskritam-mode-map (kbd value) #'samskritam)
+    (setq samskritam--bound-keymap-prefix value)))
 
 (defcustom samskritam-keymap-prefix "C-c C-s"
   "The prefix for `samskritam-mode' key bindings."
   :type 'string
+  :set #'samskritam--set-keymap-prefix
   :group 'samskritam)
 
 (defcustom samskritam-mode-line '(:eval (propertize " SKT" 'face 'mode-line-emphasis))
   "String to show in the mode-line of Samskritam.
 Setting this to nil removes it from the mode-line."
   :group 'samskritam
-  :type '(choice (const :tag "Off" nil)))
+  :type '(choice (const :tag "Off" nil)
+                 (sexp :tag "Mode-line construct")))
 
 (defcustom samskritam-default-dictionary "MW"
   "The default dictionary to use."
@@ -72,6 +96,11 @@ Setting this to nil removes it from the mode-line."
                  (const "Vacaspatyam")
                  (const "Shabdarthakausubha")
                  (const "Amarakosha"))
+  :group 'samskritam)
+
+(defcustom samskritam-network-timeout 15
+  "Maximum number of seconds to wait for an Ambuda response."
+  :type 'integer
   :group 'samskritam)
 
 
@@ -111,7 +140,7 @@ Setting this to nil removes it from the mode-line."
 
 (defconst samskritam--delimiter-regex
   (concat "^" (regexp-quote samskritam--delimiter-prefix) "\\s-*\\(.*\\)\\s-*$")
-  "Regex that matches a delimiter line. Capturing group 1 is the word (trimmed).")
+  "Regex that matches a delimiter line.  Group 1 is the trimmed word.")
 
 (defvar samskritam-ambuda-dict-choices '(
 			      ("Apte" . "apte")
@@ -184,7 +213,8 @@ Setting this to nil removes it from the mode-line."
 
 ;;;###autoload
 (defun samskritam--jump-to-last-dict-buffer ()
-  "Switch to the last active dictionary buffer. Return t on success."
+  "Switch to the last active dictionary buffer.
+Return non-nil on success."
   (if (and samskritam-last-dictionary-buffer (buffer-live-p samskritam-last-dictionary-buffer))
       (progn
         (switch-to-buffer samskritam-last-dictionary-buffer)
@@ -219,6 +249,11 @@ Setting this to nil removes it from the mode-line."
       (goto-char pos)
       (message "No previous definitions found"))))
 
+(defun samskritam--dom-inner-text (node)
+  "Return the text contained in DOM NODE across supported Emacs versions."
+  (funcall (if (fboundp 'dom-inner-text) 'dom-inner-text 'dom-texts)
+           node))
+
 (defun samskritam--ambuda-response-text ()
   "Return dictionary result text from the current Ambuda HTML buffer."
   (goto-char (point-min))
@@ -230,7 +265,8 @@ Setting this to nil removes it from the mode-line."
                    (lambda (item)
                      (string-trim
                       (replace-regexp-in-string
-                       "[[:space:]\n]+" " " (dom-texts item))))
+                       "[[:space:]\n]+" " "
+                       (samskritam--dom-inner-text item))))
                    items)))
       (when response
         (string-join
@@ -270,7 +306,8 @@ This function does NOT handle window display."
             ;; This block prevents the web request from splitting the window
             (let* ((display-buffer-alist '((".*" display-buffer-no-window)))
                    (pop-up-windows nil)
-                   (tbuf (url-retrieve-synchronously url t t)))
+                   (tbuf (url-retrieve-synchronously
+                          url t t samskritam-network-timeout)))
               (if (not tbuf)
                   (message "Could not fetch definition for '%s'" word)
                 (unwind-protect
@@ -305,7 +342,7 @@ This function does NOT handle window display."
 ;;;###autoload
 (defun samskritam-define-word-at-point (prefix)
   "Fetch and display definition for the word at point.
-With a prefix argument (e.g., `C-u`), prompt for a dictionary to use."
+With PREFIX (for example, `C-u`), prompt for a dictionary to use."
   (interactive "P")
   (samskritam--capture-original-context)
   (let ((word (samskritam--get-word-at-point)))
@@ -330,6 +367,7 @@ With a prefix argument (e.g., `C-u`), prompt for a dictionary to use."
 (defun samskritam-define-word-at-point-choice ()
   "Fetch definition for the word at point with dictionary choice."
   (interactive)
+  (samskritam--capture-original-context)
   (let ((word (samskritam--get-word-at-point)))
     (if word
         (samskritam-transient word)
@@ -360,6 +398,7 @@ With a prefix argument (e.g., `C-u`), prompt for a dictionary to use."
 (defun samskritam--enter-word-action ()
   "Enter a word and open the dictionary transient."
   (interactive)
+  (samskritam--capture-original-context)
   (let ((entered-word (samskritam--get-word-from-user)))
     (if (not (string-empty-p entered-word))
         (samskritam-transient entered-word)
@@ -482,6 +521,7 @@ Return to the original buffer and position."
                               (point-max)))))
         (when (> content-end content-start)
           (let ((overlay (make-overlay content-start content-end)))
+            (overlay-put overlay 'samskritam-fold t)
             (overlay-put overlay 'invisible 'samskritam-fold)
             (overlay-put overlay 'evaporate t)
             (overlay-put overlay 'face '(:foreground "gray50"))))))))
@@ -490,7 +530,7 @@ Return to the original buffer and position."
 (defun samskritam-unfold-all-definitions ()
   "Unfold all word definitions in the current dictionary buffer."
   (interactive)
-  (remove-overlays (point-min) (point-max)))
+  (remove-overlays (point-min) (point-max) 'samskritam-fold t))
 
 ;;;###autoload
 (defun samskritam-toggle-definition-folding ()
@@ -506,10 +546,15 @@ Return to the original buffer and position."
                                 (if (re-search-forward samskritam--delimiter-regex nil t)
                                     (match-beginning 0)
                                   (point-max))))
-                 (overlays (overlays-in content-start content-end)))
+                 (overlays
+                  (seq-filter
+                   (lambda (overlay)
+                     (overlay-get overlay 'samskritam-fold))
+                   (overlays-in content-start content-end))))
             (if overlays
                 (mapc #'delete-overlay overlays)
               (let ((overlay (make-overlay content-start content-end)))
+                (overlay-put overlay 'samskritam-fold t)
                 (overlay-put overlay 'invisible 'samskritam-fold)
                 (overlay-put overlay 'evaporate t)
                 (overlay-put overlay 'face '(:foreground "gray50")))))
@@ -553,19 +598,19 @@ Return to the original buffer and position."
   "Standardize delimiter formats in the current buffer."
   (save-excursion
     (goto-char (point-min))
-    ;; Convert various old formats to new format
     (let ((converted 0))
       (while (re-search-forward "^;;;;;;;;;;;;\n;;; \\([^;]*\\)\n;;;;;;;;;;;;$" nil t)
-        (let ((word (match-string 1)))
-          (replace-match (format ";;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;" word) t)
+        (let ((word (string-trim (match-string 1))))
+          (replace-match (concat samskritam--delimiter-prefix word) t t)
+          (setq converted (1+ converted))))
+      (goto-char (point-min))
+      (while (re-search-forward
+              "^;;;;;;;;;;;;;;; \\([^;]*\\) ;;;;;;;;;;;;;;;$" nil t)
+        (let ((word (string-trim (match-string 1))))
+          (replace-match (concat samskritam--delimiter-prefix word) t t)
           (setq converted (1+ converted))))
       (when (> converted 0)
-        (message "Standardized %d old-format delimiters" converted)))
-    ;; Also handle single-line format variations
-    (goto-char (point-min))
-    (while (re-search-forward "^;;;;;;;;;;;;;;; \\([^;]*\\) ;;;;;;;;;;;;;;;$" nil t)
-      (let ((word (match-string 1)))
-        (replace-match (format ";;;;;;;;;;;;;;; %s ;;;;;;;;;;;;;;;" word) t)))))
+        (message "Standardized %d old-format delimiters" converted)))))
 
 ;; Dictionary buffer keymap for navigation
 (defvar samskritam-dictionary-keymap
@@ -583,31 +628,47 @@ Return to the original buffer and position."
     map)
   "Keymap for dictionary buffers with navigation shortcuts.")
 
+(defun samskritam--set-default-dictionary-action ()
+  "Prompt for and set the default dictionary."
+  (interactive)
+  (let ((new-dict (completing-read
+                   "Default Dictionary: "
+                   (mapcar #'car samskritam-ambuda-dict-choices)
+                   nil t nil nil samskritam-default-dictionary)))
+    (unless (string-empty-p new-dict)
+      (customize-set-variable 'samskritam-default-dictionary new-dict)
+      (message "Default dictionary set to: %s" new-dict))))
+
+(defun samskritam--set-keymap-prefix-action ()
+  "Prompt for and set the Samskritam keymap prefix."
+  (interactive)
+  (let ((new-prefix
+         (read-string "Keymap Prefix: " samskritam-keymap-prefix)))
+    (unless (string-empty-p new-prefix)
+      (customize-set-variable 'samskritam-keymap-prefix new-prefix)
+      (message "Keymap prefix set to: %s" new-prefix))))
+
+(defun samskritam--save-settings ()
+  "Persist the settings exposed by `samskritam-settings-transient'."
+  (interactive)
+  (customize-save-variable
+   'samskritam-default-dictionary samskritam-default-dictionary)
+  (customize-save-variable
+   'samskritam-keymap-prefix samskritam-keymap-prefix)
+  (message "Settings saved."))
+
 (transient-define-prefix samskritam-settings-transient ()
-  "Samskritam Settings"
+  "Samskritam Settings."
   ["Preferences"
-   ("d" "Default Dictionary" (lambda () (interactive) 
-                                (let ((new-dict (completing-read "Default Dictionary: " 
-                                                               '("MW" "Apte" "Apte-Kosh" "Shabdasagara" "Vacaspatyam" "Shabdarthakausubha" "Amarakosha") 
-                                                               nil t)))
-                                  (when new-dict
-                                    (setq samskritam-default-dictionary new-dict)
-                                    (message "Default dictionary set to: %s" new-dict)))) :transient t)
-   ("k" "Keymap Prefix" (lambda () (interactive) 
-                            (let ((new-prefix (read-string "Keymap Prefix: " samskritam-keymap-prefix)))
-                              (when new-prefix
-                                (setq samskritam-keymap-prefix new-prefix)
-                                (message "Keymap prefix set to: %s" new-prefix)))) :transient t)]
+   ("d" "Default Dictionary" samskritam--set-default-dictionary-action
+    :transient t)
+   ("k" "Keymap Prefix" samskritam--set-keymap-prefix-action :transient t)]
   ["Persistence"
-   ("s" "Save Settings" (lambda () (interactive) 
-                         (if (fboundp 'customize-save-variables)
-                             (customize-save-variables)
-                           (message "Settings saved.")) 
-                         (message "Settings saved.")) :transient t)
+   ("s" "Save Settings" samskritam--save-settings :transient t)
    ("q" "Quit" transient-quit-one)])
 
 (transient-define-prefix samskritam--transient-display ()
-  "Samskritam Transient"
+  "Display the Samskritam transient."
   [:description (lambda () (format "Samskritam - Word: %s | Buffer: %s"
                                    (or samskritam--current-word "none")
                                    (buffer-name)))]
@@ -617,31 +678,31 @@ Return to the original buffer and position."
     ("d" "Define at Point" samskritam-define-word-at-point-choice
      :if-mode '(text-mode org-mode))]
    ["Dictionaries"
-    ("a" "Apte"       (lambda () (interactive) 
+    ("a" "Apte"       (lambda () (interactive)
                      (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Apte")))
                        (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("k" "Apte-Kosh"  (lambda () (interactive) 
+    ("k" "Apte-Kosh"  (lambda () (interactive)
                      (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Apte-Kosh")))
                        (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("m" "MW" (lambda () (interactive) 
+    ("m" "MW" (lambda () (interactive)
              (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "MW")))
                (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("s" "Shabdasagara" (lambda () (interactive) 
+    ("s" "Shabdasagara" (lambda () (interactive)
                        (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Shabdasagara")))
                          (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("v" "Vacaspatyam" (lambda () (interactive) 
+    ("v" "Vacaspatyam" (lambda () (interactive)
                       (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Vacaspatyam")))
                         (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("h" "Shabdarthakausubha" (lambda () (interactive) 
+    ("h" "Shabdarthakausubha" (lambda () (interactive)
                              (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Shabdarthakausubha")))
                                (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
-    ("o" "Amarakosha" (lambda () (interactive) 
+    ("o" "Amarakosha" (lambda () (interactive)
                      (let ((dict-buffer (samskritam--fetch-definition samskritam--current-word "Amarakosha")))
                        (samskritam--display-dictionary-buffer dict-buffer)))
      :inapt-if-not (lambda () samskritam--current-word))
@@ -661,7 +722,7 @@ Return to the original buffer and position."
   [
    ["Settings"
     ("i" "Toggle IME" samskritam--toggle-input-method :transient t)
-    ("S" "Settings" samskritam-settings-transient)]
+    ("c" "Settings" samskritam-settings-transient)]
    [""
     ("q" "Quit" transient-quit-one)]
    ]
@@ -670,7 +731,7 @@ Return to the original buffer and position."
 ;; User-facing wrapper function
 ;;;###autoload
 (defun samskritam-transient (&optional word)
-  "Set up the dynamic environment and display the Samskritam transient."
+  "Display the Samskritam transient for optional WORD."
   (setq samskritam--current-word word)
   (samskritam--transient-display))
 
@@ -678,7 +739,8 @@ Return to the original buffer and position."
 ;; Main command called by user
 ;;;###autoload
 (defun samskritam ()
-  "Open the Samskritam transient. Captures word at point for context."
+  "Open the Samskritam transient.
+Capture the word at point for context."
   (interactive)
   (samskritam--capture-original-context)
   (samskritam-transient (samskritam--get-word-at-point)))
@@ -710,12 +772,13 @@ Return to the original buffer and position."
   "Load alternative input method."
   (dolist (config samskritam-alternative-input-methods)
     (let ((method (car config)))
-      (global-set-key (cdr config)
-                      `(lambda (&optional arg interactive)
-                         ,(concat "Behaves similar to `toggle-input-method', but uses \""
-                                  method "\" instead of `default-input-method'")
-                         (interactive "P\np")
-                         (samskritam-toggle-alternative-input-method ,method arg interactive))))))
+      (define-key samskritam-mode-map (cdr config)
+                  `(lambda (&optional arg interactive)
+                     ,(concat "Behaves similar to `toggle-input-method', but uses \""
+                              method "\" instead of `default-input-method'")
+                     (interactive "P\np")
+                     (samskritam-toggle-alternative-input-method
+                      ,method arg interactive))))))
 
 ;;;###autoload
 (defun samskritam--display-dictionary-buffer (buffer)
@@ -739,6 +802,8 @@ Return to the original buffer and position."
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c d") 'samskritam-define-word-at-point)
     (define-key map (kbd "C-c D") 'samskritam--enter-word-action)
+    (define-key map (kbd samskritam-keymap-prefix) 'samskritam)
+    (setq samskritam--bound-keymap-prefix samskritam-keymap-prefix)
     map)
   "Keymap for `samskritam-mode'.")
 
@@ -753,12 +818,9 @@ Return to the original buffer and position."
 
   (if samskritam-mode
       (progn
-        (global-set-key (kbd samskritam-keymap-prefix) 'samskritam)
 	(samskritam-reload-alternative-input-methods)
 	(message "Samskritam mode activated"))
-    (progn
-      (global-unset-key (kbd samskritam-keymap-prefix))
-      (message "Samskritam mode deactivated"))))
+    (message "Samskritam mode deactivated")))
 
 ;;;; राम
 (provide 'samskritam)
